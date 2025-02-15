@@ -75,10 +75,10 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
                 .context("Failed to serialize metadata to JSON")?
         ).with_context(|| format!("Failed to write metadata to {}", json_path.display()))?;
 
-        if !training_metadata.as_object().map_or(false, |m| m.is_empty()) {
-            log::info!("Wrote metadata to {}", json_path.display());
-        } else {
+        if training_metadata.as_object().is_some_and(serde_json::Map::is_empty) {
             log::info!("No training metadata found in {}", path.display());
+        } else {
+            log::info!("Wrote metadata to {}", json_path.display());
         }
         Ok(())
     }).await?

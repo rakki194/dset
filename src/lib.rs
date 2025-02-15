@@ -36,7 +36,7 @@ use tokio::{
 /// Returns an error if:
 /// - Failed to read the file
 /// - Failed to parse the metadata
-async fn get_json_metadata(path: &Path) -> Result<Value> {
+fn get_json_metadata(path: &Path) -> Result<Value> {
     use memmap2::MmapOptions;
     use ::safetensors::SafeTensors;
     use std::fs::File;
@@ -67,7 +67,7 @@ async fn get_json_metadata(path: &Path) -> Result<Value> {
 /// Returns an error if:
 /// - Failed to process the safetensors file
 pub async fn process_safetensors_file(path: &Path) -> Result<()> {
-    let json = get_json_metadata(path).await?;
+    let json = get_json_metadata(path)?;
     let pretty_json = serde_json::to_string_pretty(&json)?;
     info!("{pretty_json}");
     write(path.with_extension("json"), pretty_json).await?;
