@@ -1,0 +1,20 @@
+[package]
+name = "dset"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A Rust library for processing and managing dataset-related files, with a focus on machine learning datasets, captions, and safetensors files"
+
+[dependencies]
+xio = { path = "../xio" }
+anyhow = { version = "1.0.95", features = ["backtrace"] }
+safetensors = "0.5.2"
+memmap2 = "0.9.5"
+serde_json = "1.0.138"
+tokio = { version = "1.43.0", features = ["full"] }
+log = "0.4.25"
+imx = { path = "../imx" }
+
+[lib]
+name = "dset"
+path = "src/lib.rs" 
