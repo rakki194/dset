@@ -45,22 +45,24 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
 
         // Decode JSON-encoded strings in the metadata
         if let Value::Object(ref mut meta_obj) = training_metadata {
-            // Fields that are known to contain JSON strings
-            let json_fields = [
-                "ss_bucket_info",
-                "ss_tag_frequency",
-                "ss_dataset_dirs",
-                "ss_network_args",
-                "resize_params",
-                "ss_network_module",  // Add this in case it exists
-                "ss_caption_dropout", // Add this in case it exists
-                "ss_output_name",     // Add this in case it exists
-            ];
+            // Try to decode any string field that looks like JSON
+            let fields_to_decode: Vec<String> = meta_obj.iter()
+                .filter_map(|(key, value)| {
+                    if let Value::String(s) = value {
+                        let trimmed = s.trim();
+                        if (trimmed.starts_with('{') && trimmed.ends_with('}')) || 
+                           (trimmed.starts_with('[') && trimmed.ends_with(']')) {
+                            return Some(key.clone());
+                        }
+                    }
+                    None
+                })
+                .collect();
             
-            for field in json_fields {
-                if let Some(Value::String(json_str)) = meta_obj.get(field) {
+            for field in fields_to_decode {
+                if let Some(Value::String(json_str)) = meta_obj.get(&field) {
                     if let Ok(decoded) = serde_json::from_str(json_str) {
-                        meta_obj.insert(field.to_string(), decoded);
+                        meta_obj.insert(field.clone(), decoded);
                     }
                 }
             }

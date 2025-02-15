@@ -1,6 +1,6 @@
 [package]
 name = "dset"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "A Rust library for processing and managing dataset-related files, with a focus on machine learning datasets, captions, and safetensors files"
@@ -20,4 +20,9 @@ imx = { path = "../imx", version = "0.1.0" }
 
 [lib]
 name = "dset"
-path = "src/lib.rs" 
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3.16.0"
+tokio = { version = "1.43.0", features = ["full", "test-util"] }
+serde_json = "1.0.138" 

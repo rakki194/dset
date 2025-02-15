@@ -18,7 +18,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dset = "0.1.0"
+dset = "0.1.1"
 ```
 
 ## Usage Examples

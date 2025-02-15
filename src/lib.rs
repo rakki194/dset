@@ -1,7 +1,14 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-pub mod safetensors;
+pub mod st;
 pub mod caption;
+
+#[cfg(test)]
+mod tests {
+    mod st_tests;
+    mod caption_tests;
+    mod utils_tests;
+}
 
 pub use xio;
 use log::info;
@@ -118,7 +125,9 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
 #[must_use = "Splits content into tags and sentences and the result should be checked"]
 pub fn split_content(content: &str) -> (Vec<&str>, &str) {
     let split: Vec<_> = content.split("., ").collect();
-    let tags: Vec<_> = split[0].split(',').collect();
+    let tags: Vec<_> = split[0].split(',')
+        .map(str::trim)
+        .collect();
     let sentences = split.get(1).unwrap_or(&"");
     (tags, sentences.trim())
 }
