@@ -1,7 +1,7 @@
 use serde_json::Value;
 
-/// Recursively decodes JSON-encoded strings within a serde_json::Value.
-/// If a string equals "None", it is converted to JSON null. If a string starts with '{' or '[' and ends with '}' or ']',
+/// Recursively decodes JSON-encoded strings within a `serde_json::Value`.
+/// If a string equals `None`, it is converted to JSON null. If a string starts with `{` or `[` and ends with `}` or `]`,
 /// it attempts to parse it as JSON and then recursively decodes its contents.
 pub fn decode_json_strings(value: Value) -> Value {
     match value {
@@ -33,26 +33,26 @@ pub fn decode_json_strings(value: Value) -> Value {
 }
 
 /// Extracts the training metadata from the raw metadata.
-/// If the raw metadata contains a "__metadata__" field, it decodes that field.
+/// If the raw metadata contains a `__metadata__` field, it decodes that field.
 /// Otherwise, it decodes the entire metadata.
+#[must_use]
 pub fn extract_training_metadata(raw_metadata: &Value) -> Value {
     if let Value::Object(map) = raw_metadata {
         if let Some(meta) = map.get("__metadata__") {
             match meta {
                 Value::String(s) => {
-                    match serde_json::from_str::<Value>(s) {
-                        Ok(parsed) => decode_json_strings(parsed),
-                        Err(_) => {
-                            let mut new_map = serde_json::Map::new();
-                            new_map.insert("invalid_json".to_string(), Value::String(s.clone()));
-                            Value::Object(new_map)
-                        }
+                    if let Ok(parsed) = serde_json::from_str::<Value>(s) {
+                        decode_json_strings(parsed)
+                    } else {
+                        let mut new_map = serde_json::Map::new();
+                        new_map.insert("invalid_json".to_string(), Value::String(s.clone()));
+                        Value::Object(new_map)
                     }
                 },
                 other => decode_json_strings(other.clone()),
             }
         } else {
-            // If no "__metadata__" field exists, decode the entire metadata
+            // If no `__metadata__` field exists, decode the entire metadata
             decode_json_strings(raw_metadata.clone())
         }
     } else {
