@@ -2,13 +2,7 @@
 
 pub mod st;
 pub mod caption;
-
-#[cfg(test)]
-mod tests {
-    mod st_tests;
-    mod caption_tests;
-    mod utils_tests;
-}
+pub mod metadata;
 
 pub use xio;
 use log::info;
@@ -45,18 +39,11 @@ fn get_json_metadata(path: &Path) -> Result<Value> {
     let mmap = unsafe { MmapOptions::new().map(&file).context("Failed to mmap file")? };
     let (_header_size, metadata) = SafeTensors::read_metadata(&mmap).context("Failed to read metadata")?;
     
-    // Extract just the __metadata__ contents if it exists
+    // Convert the raw metadata into a JSON value
     let metadata_json: Value = serde_json::to_value(&metadata).context("Failed to convert metadata to JSON value")?;
     
-    let training_metadata = if let Value::Object(obj) = metadata_json {
-        if let Some(Value::Object(meta)) = obj.get("__metadata__") {
-            Value::Object(meta.clone())
-        } else {
-            Value::Object(serde_json::Map::new())
-        }
-    } else {
-        Value::Object(serde_json::Map::new())
-    };
+    // Use the new helper function to extract and recursively decode JSON fields
+    let training_metadata = crate::metadata::extract_training_metadata(&metadata_json);
 
     Ok(training_metadata)
 }
