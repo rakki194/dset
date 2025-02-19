@@ -8,13 +8,7 @@ A Rust library for processing and managing dataset-related files, with a focus o
 
 - Extract and decode embedded metadata from SafeTensors files
 - Automatic JSON decoding of nested metadata fields
-- Support for special metadata fields:
-  - `__metadata__`
-  - `ss_bucket_info`
-  - `ss_tag_frequency`
-  - `ss_dataset_dirs`
-  - `ss_network_args`
-  - `resize_params`
+- Support for special metadata fields
 - Memory-mapped file handling for efficient processing
 - Pretty-printed JSON output
 
@@ -67,7 +61,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dset = "0.1.2"
+dset = "0.1.3"
 ```
 
 ## Usage Examples
@@ -220,3 +214,4 @@ Contributions are welcome! Please feel free to submit a Pull Request. When contr
 ## License
 
 This project is licensed under the MIT License.
+
