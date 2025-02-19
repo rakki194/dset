@@ -1,39 +1,45 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-pub mod st;
 pub mod caption;
 pub mod metadata;
+pub mod st;
 
-pub use xio;
 use log::info;
+pub use xio;
 
 // Re-export commonly used types
-pub use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde_json::Value;
+pub use std::path::{Path, PathBuf};
 use tokio::{
     fs::{self, File, write},
     io::{self, AsyncWriteExt},
 };
 
 /// Get JSON metadata from a safetensors file
-/// 
+///
 /// # Errors
 /// Returns an error if:
 /// - Failed to read the file
 /// - Failed to parse the metadata
 fn get_json_metadata(path: &Path) -> Result<Value> {
-    use memmap2::MmapOptions;
     use ::safetensors::SafeTensors;
+    use memmap2::MmapOptions;
     use std::fs::File;
 
     let file = File::open(path).context("Failed to open file")?;
-    let mmap = unsafe { MmapOptions::new().map(&file).context("Failed to mmap file")? };
-    let (_header_size, metadata) = SafeTensors::read_metadata(&mmap).context("Failed to read metadata")?;
-    
+    let mmap = unsafe {
+        MmapOptions::new()
+            .map(&file)
+            .context("Failed to mmap file")?
+    };
+    let (_header_size, metadata) =
+        SafeTensors::read_metadata(&mmap).context("Failed to read metadata")?;
+
     // Convert the raw metadata into a JSON value
-    let metadata_json: Value = serde_json::to_value(&metadata).context("Failed to convert metadata to JSON value")?;
-    
+    let metadata_json: Value =
+        serde_json::to_value(&metadata).context("Failed to convert metadata to JSON value")?;
+
     // Use the new helper function to extract and recursively decode JSON fields
     let training_metadata = crate::metadata::extract_training_metadata(&metadata_json);
 
@@ -41,7 +47,7 @@ fn get_json_metadata(path: &Path) -> Result<Value> {
 }
 
 /// Process a safetensors file and extract its metadata
-/// 
+///
 /// # Errors
 /// Returns an error if:
 /// - Failed to process the safetensors file
@@ -54,7 +60,7 @@ pub async fn process_safetensors_file(path: &Path) -> Result<()> {
 }
 
 /// Process a caption file
-/// 
+///
 /// # Errors
 /// Returns an error if:
 /// - Failed to process the caption file
@@ -104,9 +110,7 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
 #[must_use = "Splits content into tags and sentences and the result should be checked"]
 pub fn split_content(content: &str) -> (Vec<&str>, &str) {
     let split: Vec<_> = content.split("., ").collect();
-    let tags: Vec<_> = split[0].split(',')
-        .map(str::trim)
-        .collect();
+    let tags: Vec<_> = split[0].split(',').map(str::trim).collect();
     let sentences = split.get(1).unwrap_or(&"");
     (tags, sentences.trim())
 }
@@ -163,32 +167,35 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use std::fs;
     use serde_json::json;
+    use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_process_json_file() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let file_path = temp_dir.path().join("test.json");
-        
+
         let test_json = json!({
             "key1": "value1",
             "key2": 42
         });
-        
+
         fs::write(&file_path, serde_json::to_string_pretty(&test_json)?)?;
-        
+
         let processed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let processed_clone = processed.clone();
-        
-        process_json_file(&file_path, |json| Box::pin(async move {
-            assert_eq!(json["key1"], "value1");
-            assert_eq!(json["key2"], 42);
-            processed_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-            Ok(())
-        })).await?;
-        
+
+        process_json_file(&file_path, |json| {
+            Box::pin(async move {
+                assert_eq!(json["key1"], "value1");
+                assert_eq!(json["key2"], 42);
+                processed_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            })
+        })
+        .await?;
+
         assert!(processed.load(std::sync::atomic::Ordering::SeqCst));
         Ok(())
     }
@@ -197,22 +204,22 @@ mod tests {
     async fn test_format_json_file() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let file_path = temp_dir.path().join("test.json");
-        
+
         // Write unformatted JSON
         fs::write(&file_path, r#"{"key1":"value1","key2":42}"#)?;
-        
+
         format_json_file(file_path.clone()).await?;
-        
+
         // Verify the formatting
         let content = fs::read_to_string(file_path)?;
-        assert!(content.contains("\n"));  // Should contain newlines
-        assert!(content.contains("  "));  // Should contain indentation
-        
+        assert!(content.contains("\n")); // Should contain newlines
+        assert!(content.contains("  ")); // Should contain indentation
+
         // Verify the content is valid JSON and matches original
         let json: Value = serde_json::from_str(&content)?;
         assert_eq!(json["key1"], "value1");
         assert_eq!(json["key2"], 42);
-        
+
         Ok(())
     }
 
@@ -247,7 +254,7 @@ mod tests {
     async fn test_process_json_to_caption() -> io::Result<()> {
         let temp_dir = TempDir::new()?;
         let json_path = temp_dir.path().join("test.json");
-        
+
         // Create test JSON with tag probabilities
         let json = json!({
             "tag1": 0.9,
@@ -255,40 +262,40 @@ mod tests {
             "tag3": 0.1,  // Below threshold
             "tag(special)": 0.8
         });
-        
+
         fs::write(&json_path, serde_json::to_string(&json)?)?;
-        
+
         process_json_to_caption(&json_path).await?;
-        
+
         // Verify the output
         let txt_path = json_path.with_extension("txt");
         assert!(txt_path.exists());
-        
+
         let content = fs::read_to_string(txt_path)?;
         assert!(content.contains("tag1"));
         assert!(content.contains("tag2"));
-        assert!(!content.contains("tag3"));  // Should be filtered out
-        assert!(content.contains("tag\\(special\\)"));  // Should be escaped
-        
+        assert!(!content.contains("tag3")); // Should be filtered out
+        assert!(content.contains("tag\\(special\\)")); // Should be escaped
+
         Ok(())
     }
 
     #[tokio::test]
     async fn test_process_json_to_caption_invalid_file() -> io::Result<()> {
         let temp_dir = TempDir::new()?;
-        let file_path = temp_dir.path().join("test.txt");  // Wrong extension
-        
+        let file_path = temp_dir.path().join("test.txt"); // Wrong extension
+
         fs::write(&file_path, "not json")?;
-        
+
         // Process the non-JSON file
         process_json_to_caption(&file_path).await?;
-        
+
         // Delete the output file if it exists (cleanup)
         let txt_path = file_path.with_extension("txt");
         if txt_path.exists() {
             fs::remove_file(&txt_path)?;
         }
-        
+
         Ok(())
     }
-} 
+}
