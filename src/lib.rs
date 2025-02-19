@@ -70,12 +70,12 @@ pub async fn process_caption_file(path: &Path) -> Result<()> {
 #[must_use = "Processes a JSON file and requires handling of the result to ensure proper file processing"]
 pub async fn process_json_file<F, Fut>(file_path: &Path, processor: F) -> io::Result<()>
 where
-    F: FnOnce(&Value) -> Fut,
-    Fut: std::future::Future<Output = io::Result<()>>,
+    F: FnOnce(Value) -> Fut + Send,
+    Fut: std::future::Future<Output = io::Result<()>> + Send,
 {
     let content = fs::read_to_string(file_path).await?;
     let data: Value = serde_json::from_str(&content)?;
-    processor(&data).await
+    processor(data).await
 }
 
 /// Formats a JSON file to have pretty-printed JSON.
@@ -118,41 +118,177 @@ pub fn split_content(content: &str) -> (Vec<&str>, &str) {
 /// Returns an `io::Error` if the file cannot be read, parsed, or written.
 #[must_use = "Processes a JSON file to create a caption file and requires handling of the result to ensure proper conversion"]
 pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
-    if input_path.extension().and_then(|s| s.to_str()) == Some("json") {
-        let content = fs::read_to_string(input_path).await?;
-        let json: Value = serde_json::from_str(&content)?;
+    // Early return if not a JSON file
+    if input_path.extension().and_then(|s| s.to_str()) != Some("json") {
+        return Ok(());
+    }
 
-        if let Value::Object(map) = json {
-            let mut tags: Vec<(String, f64)> = map
-                .iter()
-                .filter_map(|(key, value)| {
-                    if let Value::Number(num) = value {
-                        let probability = num.as_f64().unwrap_or(0.0);
-                        if probability > 0.2 {
-                            Some((key.replace('(', "\\(").replace(')', "\\)"), probability))
-                        } else {
-                            None
-                        }
+    let content = fs::read_to_string(input_path).await?;
+    let json: Value = serde_json::from_str(&content)?;
+
+    if let Value::Object(map) = json {
+        let mut tags: Vec<(String, f64)> = map
+            .iter()
+            .filter_map(|(key, value)| {
+                if let Value::Number(num) = value {
+                    let probability = num.as_f64().unwrap_or(0.0);
+                    if probability > 0.2 {
+                        Some((key.replace('(', "\\(").replace(')', "\\)"), probability))
                     } else {
                         None
                     }
-                })
-                .collect();
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            tags.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        tags.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-            let output_path = input_path.with_extension("txt");
-            let mut output_file = File::create(output_path).await?;
-            output_file
-                .write_all(
-                    tags.iter()
-                        .map(|(tag, _)| tag.clone())
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                        .as_bytes(),
-                )
-                .await?;
-        }
+        let output_path = input_path.with_extension("txt");
+        let mut output_file = File::create(output_path).await?;
+        output_file
+            .write_all(
+                tags.iter()
+                    .map(|(tag, _)| tag.clone())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+                    .as_bytes(),
+            )
+            .await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_process_json_file() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("test.json");
+        
+        let test_json = json!({
+            "key1": "value1",
+            "key2": 42
+        });
+        
+        fs::write(&file_path, serde_json::to_string_pretty(&test_json)?)?;
+        
+        let processed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let processed_clone = processed.clone();
+        
+        process_json_file(&file_path, |json| Box::pin(async move {
+            assert_eq!(json["key1"], "value1");
+            assert_eq!(json["key2"], 42);
+            processed_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        })).await?;
+        
+        assert!(processed.load(std::sync::atomic::Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_format_json_file() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("test.json");
+        
+        // Write unformatted JSON
+        fs::write(&file_path, r#"{"key1":"value1","key2":42}"#)?;
+        
+        format_json_file(file_path.clone()).await?;
+        
+        // Verify the formatting
+        let content = fs::read_to_string(file_path)?;
+        assert!(content.contains("\n"));  // Should contain newlines
+        assert!(content.contains("  "));  // Should contain indentation
+        
+        // Verify the content is valid JSON and matches original
+        let json: Value = serde_json::from_str(&content)?;
+        assert_eq!(json["key1"], "value1");
+        assert_eq!(json["key2"], 42);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_split_content() {
+        // Test basic splitting
+        let content = "tag1, tag2, tag3., This is a test sentence.";
+        let (tags, sentence) = split_content(content);
+        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
+        assert_eq!(sentence, "This is a test sentence.");
+
+        // Test with no sentence
+        let content = "tag1, tag2, tag3";
+        let (tags, sentence) = split_content(content);
+        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
+        assert_eq!(sentence, "");
+
+        // Test with empty content
+        let content = "";
+        let (tags, sentence) = split_content(content);
+        assert_eq!(tags, vec![""]);
+        assert_eq!(sentence, "");
+
+        // Test with extra spaces
+        let content = "tag1 ,  tag2,tag3  ., Some sentence.";
+        let (tags, sentence) = split_content(content);
+        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
+        assert_eq!(sentence, "Some sentence.");
+    }
+
+    #[tokio::test]
+    async fn test_process_json_to_caption() -> io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let json_path = temp_dir.path().join("test.json");
+        
+        // Create test JSON with tag probabilities
+        let json = json!({
+            "tag1": 0.9,
+            "tag2": 0.5,
+            "tag3": 0.1,  // Below threshold
+            "tag(special)": 0.8
+        });
+        
+        fs::write(&json_path, serde_json::to_string(&json)?)?;
+        
+        process_json_to_caption(&json_path).await?;
+        
+        // Verify the output
+        let txt_path = json_path.with_extension("txt");
+        assert!(txt_path.exists());
+        
+        let content = fs::read_to_string(txt_path)?;
+        assert!(content.contains("tag1"));
+        assert!(content.contains("tag2"));
+        assert!(!content.contains("tag3"));  // Should be filtered out
+        assert!(content.contains("tag\\(special\\)"));  // Should be escaped
+        
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_process_json_to_caption_invalid_file() -> io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("test.txt");  // Wrong extension
+        
+        fs::write(&file_path, "not json")?;
+        
+        // Process the non-JSON file
+        process_json_to_caption(&file_path).await?;
+        
+        // Delete the output file if it exists (cleanup)
+        let txt_path = file_path.with_extension("txt");
+        if txt_path.exists() {
+            fs::remove_file(&txt_path)?;
+        }
+        
+        Ok(())
+    }
 } 

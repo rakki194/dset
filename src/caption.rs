@@ -47,4 +47,80 @@ pub fn json_to_text(json: &Value) -> anyhow::Result<String> {
         }
         _ => Err(anyhow::anyhow!("Unsupported JSON format")),
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_process_file_plain_text() -> anyhow::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "tag1, tag2, tag3., This is a test caption.")?;
+
+        process_file(&file_path).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_process_file_json() -> anyhow::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("test.json");
+        let json = json!({
+            "caption": "A test caption",
+            "tags": ["tag1", "tag2"]
+        });
+        fs::write(&file_path, serde_json::to_string_pretty(&json)?)?;
+
+        process_file(&file_path).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_process_file_invalid_json() -> anyhow::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let file_path = temp_dir.path().join("invalid.json");
+        fs::write(&file_path, "{ invalid json }")?;
+
+        // Should handle invalid JSON gracefully by treating it as plain text
+        process_file(&file_path).await?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_to_text_string() -> anyhow::Result<()> {
+        let json = json!("Test caption");
+        let text = json_to_text(&json)?;
+        assert_eq!(text, "Test caption");
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_to_text_object() -> anyhow::Result<()> {
+        let json = json!({
+            "caption": "Test caption",
+            "other_field": "ignored"
+        });
+        let text = json_to_text(&json)?;
+        assert_eq!(text, "Test caption");
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_to_text_invalid_object() {
+        let json = json!({
+            "not_caption": "Test caption"
+        });
+        assert!(json_to_text(&json).is_err());
+    }
+
+    #[test]
+    fn test_json_to_text_unsupported_format() {
+        let json = json!(42);
+        assert!(json_to_text(&json).is_err());
+    }
 } 
