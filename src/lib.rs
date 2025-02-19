@@ -7,14 +7,6 @@ pub mod metadata;
 pub use xio;
 use log::info;
 
-// Re-export image-related functionality
-pub use imx::{
-    is_image_file,
-    caption_file_exists_and_not_empty,
-    rename_file_without_image_extension,
-    remove_letterbox,
-};
-
 // Re-export commonly used types
 pub use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};

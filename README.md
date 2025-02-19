@@ -10,7 +10,6 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - 🎯 Smart content splitting and tag processing
 - ⚡ Asynchronous operations using Tokio
 - 🛡️ Robust error handling with anyhow
-- 🖼️ Image-related utilities (via imx integration)
 
 ## Installation
 
@@ -18,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dset = "0.1.1"
+dset = "0.1.2"
 ```
 
 ## Usage Examples
@@ -95,13 +94,6 @@ fn process_content(content: &str) {
 - Automatic format detection and parsing
 - Tag probability filtering
 - Special character escaping
-
-### Image Utilities (via imx)
-
-- Image file detection
-- Caption file validation
-- Letterbox removal
-- File extension handling
 
 ## Error Handling
 
