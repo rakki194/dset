@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 use serde_json::Value;
 
 /// Recursively decodes JSON-encoded strings within a `serde_json::Value`.

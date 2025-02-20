@@ -1,5 +1,18 @@
 #![warn(clippy::all, clippy::pedantic)]
 
+//! A library for processing and managing dataset-related files and metadata.
+//! 
+//! This library provides functionality for:
+//! - Processing safetensors files and extracting metadata
+//! - Handling caption files
+//! - Processing and formatting JSON files
+//! - Converting between different file formats (JSON to caption)
+//! 
+//! The library is organized into several modules:
+//! - `caption`: Handles caption file processing
+//! - `metadata`: Manages metadata extraction and processing
+//! - `st`: SafeTensors-related functionality
+
 pub mod caption;
 pub mod metadata;
 pub mod st;
@@ -16,12 +29,24 @@ use tokio::{
     io::{self, AsyncWriteExt},
 };
 
-/// Get JSON metadata from a safetensors file
+/// Extracts and parses JSON metadata from a safetensors file.
+///
+/// This function reads a safetensors file, extracts its metadata, and converts it into
+/// a JSON value. The metadata is processed through the `metadata::extract_training_metadata`
+/// function to decode any nested JSON fields.
+///
+/// # Arguments
+/// * `path` - Path to the safetensors file
+///
+/// # Returns
+/// * `Result<Value>` - The parsed JSON metadata if successful
 ///
 /// # Errors
 /// Returns an error if:
-/// - Failed to read the file
-/// - Failed to parse the metadata
+/// * The file cannot be opened
+/// * Memory mapping fails
+/// * Metadata cannot be read from the safetensors file
+/// * Metadata cannot be converted to JSON
 fn get_json_metadata(path: &Path) -> Result<Value> {
     use ::safetensors::SafeTensors;
     use memmap2::MmapOptions;
@@ -46,11 +71,24 @@ fn get_json_metadata(path: &Path) -> Result<Value> {
     Ok(training_metadata)
 }
 
-/// Process a safetensors file and extract its metadata
+/// Processes a safetensors file by extracting its metadata and saving it as a JSON file.
+///
+/// This function:
+/// 1. Extracts metadata from the safetensors file
+/// 2. Pretty-prints the JSON metadata
+/// 3. Saves the metadata to a new file with the same name but .json extension
+///
+/// # Arguments
+/// * `path` - Path to the safetensors file to process
+///
+/// # Returns
+/// * `Result<()>` - Success or failure of the operation
 ///
 /// # Errors
 /// Returns an error if:
-/// - Failed to process the safetensors file
+/// * Metadata extraction fails
+/// * JSON formatting fails
+/// * Writing the output file fails
 pub async fn process_safetensors_file(path: &Path) -> Result<()> {
     let json = get_json_metadata(path)?;
     let pretty_json = serde_json::to_string_pretty(&json)?;
@@ -59,20 +97,45 @@ pub async fn process_safetensors_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Process a caption file
+/// Processes a caption file using the functionality in the caption module.
+///
+/// This is a wrapper function that delegates the actual processing to the
+/// caption module's implementation.
+///
+/// # Arguments
+/// * `path` - Path to the caption file to process
+///
+/// # Returns
+/// * `Result<()>` - Success or failure of the operation
 ///
 /// # Errors
-/// Returns an error if:
-/// - Failed to process the caption file
+/// Returns an error if the caption processing fails
 pub async fn process_caption_file(path: &Path) -> Result<()> {
     caption::process_file(path).await
 }
 
-/// Processes a JSON file with a given processor function.
+/// Processes a JSON file using a provided async processor function.
+///
+/// This function reads a JSON file, parses it, and applies a custom processor
+/// function to the parsed data. The processor function can perform any desired
+/// transformations or operations on the JSON data.
+///
+/// # Type Parameters
+/// * `F` - The processor function type
+/// * `Fut` - The future type returned by the processor function
+///
+/// # Arguments
+/// * `file_path` - Path to the JSON file to process
+/// * `processor` - Async function that processes the parsed JSON data
+///
+/// # Returns
+/// * `io::Result<()>` - Success or failure of the operation
 ///
 /// # Errors
-///
-/// Returns an `io::Error` if the file cannot be opened, read, or if the JSON cannot be parsed.
+/// Returns an error if:
+/// * The file cannot be read
+/// * The content cannot be parsed as JSON
+/// * The processor function returns an error
 #[must_use = "Processes a JSON file and requires handling of the result to ensure proper file processing"]
 pub async fn process_json_file<F, Fut>(file_path: &Path, processor: F) -> io::Result<()>
 where
@@ -84,11 +147,23 @@ where
     processor(data).await
 }
 
-/// Formats a JSON file to have pretty-printed JSON.
+/// Formats a JSON file by pretty-printing its contents.
+///
+/// This function reads a JSON file, parses it, and writes it back with proper
+/// formatting and indentation. The original file is overwritten with the
+/// formatted version.
+///
+/// # Arguments
+/// * `path` - Path to the JSON file to format
+///
+/// # Returns
+/// * `Result<()>` - Success or failure of the operation
 ///
 /// # Errors
-///
-/// Returns an `io::Error` if the file cannot be read, parsed as JSON, or written back.
+/// Returns an error if:
+/// * The file cannot be read
+/// * The content cannot be parsed as JSON
+/// * The formatted JSON cannot be written back to the file
 #[must_use = "Formats a JSON file and requires handling of the result to ensure the file is properly formatted"]
 pub async fn format_json_file(path: PathBuf) -> Result<()> {
     info!("Processing file: {}", path.display());
@@ -106,7 +181,26 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// Splits content into tags and sentences.
+/// Splits a content string into tags and sentences.
+///
+/// This function takes a string in the format "tag1, tag2, tag3., Sentence text"
+/// and splits it into a vector of tags and the remaining sentence text.
+///
+/// # Arguments
+/// * `content` - The string to split, expected to be in the format "tags., sentence"
+///
+/// # Returns
+/// * `(Vec<&str>, &str)` - A tuple containing:
+///   * A vector of tag strings
+///   * The remaining sentence text
+///
+/// # Examples
+/// ```
+/// let content = "tag1, tag2, tag3., This is a sentence.";
+/// let (tags, sentence) = split_content(content);
+/// assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
+/// assert_eq!(sentence, "This is a sentence.");
+/// ```
 #[must_use = "Splits content into tags and sentences and the result should be checked"]
 pub fn split_content(content: &str) -> (Vec<&str>, &str) {
     let split: Vec<_> = content.split("., ").collect();
@@ -115,11 +209,33 @@ pub fn split_content(content: &str) -> (Vec<&str>, &str) {
     (tags, sentences.trim())
 }
 
-/// Processes a JSON file and converts it to a caption file.
+/// Converts a JSON file containing tag probabilities into a caption file.
+///
+/// This function reads a JSON file containing tag-probability pairs, filters
+/// tags based on a probability threshold (0.2), and writes the selected tags
+/// to a new .txt file. Tags are sorted by probability in descending order.
+///
+/// # Arguments
+/// * `input_path` - Path to the input JSON file
+///
+/// # Returns
+/// * `io::Result<()>` - Success or failure of the operation
 ///
 /// # Errors
+/// Returns an error if:
+/// * The input file cannot be read
+/// * The content cannot be parsed as JSON
+/// * The output file cannot be written
 ///
-/// Returns an `io::Error` if the file cannot be read, parsed, or written.
+/// # Format
+/// Input JSON should be in the format:
+/// ```json
+/// {
+///     "tag1": 0.9,
+///     "tag2": 0.5,
+///     "tag3": 0.1
+/// }
+/// ```
 #[must_use = "Processes a JSON file to create a caption file and requires handling of the result to ensure proper conversion"]
 pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
     // Early return if not a JSON file

@@ -1,13 +1,54 @@
+#![warn(clippy::all, clippy::pedantic)]
+
+//! Caption processing module for handling both JSON and plain text caption files.
+//! 
+//! This module provides functionality to process caption files in different formats:
+//! - JSON files containing caption data either as direct strings or objects with a "caption" field
+//! - Plain text files containing raw caption text
+//! 
+//! # Example
+//! ```no_run
+//! use std::path::Path;
+//! 
+//! async fn example() -> anyhow::Result<()> {
+//!     let path = Path::new("captions/example.json");
+//!     process_file(&path).await?;
+//!     Ok(())
+//! }
+//! ```
+//! 
+//! The module handles file reading asynchronously and provides error handling for various
+//! failure scenarios including file I/O errors and JSON parsing failures.
+
 use serde_json::Value;
 use std::path::Path;
 use tokio::task;
 
-/// Process a caption file
+/// Processes a caption file by reading its contents and interpreting them as either JSON or plain text.
+///
+/// This function attempts to read the file contents and first tries to parse them as JSON.
+/// If JSON parsing succeeds, it processes the content as a JSON caption. If parsing fails,
+/// it falls back to treating the content as plain text.
+///
+/// # Arguments
+/// * `path` - A reference to the Path of the caption file to process
 ///
 /// # Errors
 /// Returns an error if:
-/// - Failed to read the file
-/// - Failed to parse JSON (if file is in JSON format)
+/// * The file cannot be read from the filesystem
+/// * The file contents cannot be decoded as UTF-8 text
+/// * The spawned blocking task fails to complete
+///
+/// # Example
+/// ```no_run
+/// use std::path::Path;
+/// 
+/// async fn example() -> anyhow::Result<()> {
+///     let path = Path::new("caption.txt");
+///     process_file(&path).await?;
+///     Ok(())
+/// }
+/// ```
 pub async fn process_file(path: &Path) -> anyhow::Result<()> {
     log::info!("Processing caption file: {}", path.display());
 
@@ -34,12 +75,36 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
     .await?
 }
 
-/// Convert JSON caption to plain text
+/// Converts a JSON value into plain text by extracting the caption content.
+///
+/// This function handles two types of JSON inputs:
+/// 1. Direct string values - returns the string directly
+/// 2. Objects with a "caption" field - extracts and returns the "caption" field value
+///
+/// # Arguments
+/// * `json` - A reference to a serde_json Value containing the caption data
+///
+/// # Returns
+/// * `Ok(String)` - The extracted caption text
+/// * `Err` - If the JSON format is not supported or missing required fields
 ///
 /// # Errors
 /// Returns an error if:
-/// - JSON is not a string or object with a "caption" field
-/// - The "caption" field is not a string
+/// * The JSON value is neither a string nor an object
+/// * The JSON object doesn't contain a "caption" field
+/// * The "caption" field is not a string value
+///
+/// # Example
+/// ```
+/// use serde_json::json;
+/// 
+/// # fn main() -> anyhow::Result<()> {
+/// let json = json!({"caption": "Hello world"});
+/// let text = json_to_text(&json)?;
+/// assert_eq!(text, "Hello world");
+/// # Ok(())
+/// # }
+/// ```
 pub fn json_to_text(json: &Value) -> anyhow::Result<String> {
     match json {
         Value::String(s) => Ok(s.clone()),

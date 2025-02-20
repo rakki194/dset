@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 use anyhow::Context;
 use memmap2::Mmap;
 use safetensors::SafeTensors;
