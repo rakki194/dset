@@ -306,6 +306,12 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 /// Returns an error if:
 /// * The file cannot be renamed
 /// * The file system operation fails
+/// * The file name is invalid UTF-8
+///
+/// # Panics
+/// This function will panic if:
+/// * The file name has multiple extensions but `parts.last()` fails to get the last extension
+///   (this should never happen as we check `parts.len() >= 3` before accessing)
 ///
 /// # Example
 /// ```no_run
@@ -341,6 +347,7 @@ pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> 
         if has_image_ext {
             // Reconstruct the filename without image extensions
             let mut new_name = String::from(parts[0]);
+            // SAFETY: We checked parts.len() >= 3 above, so last() will never be None
             let last_ext = parts.last().unwrap();
             new_name.push('.');
             new_name.push_str(last_ext);
