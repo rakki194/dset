@@ -122,6 +122,36 @@ pub fn json_to_text(json: &Value) -> anyhow::Result<String> {
     }
 }
 
+/// Checks if a caption file exists and contains non-whitespace content.
+///
+/// # Arguments
+/// * `path` - A reference to the Path of the caption file to check
+///
+/// # Returns
+/// * `true` if the file exists and contains non-whitespace content
+/// * `false` if the file doesn't exist, can't be read, or is empty/whitespace-only
+///
+/// # Example
+/// ```no_run
+/// use std::path::Path;
+/// use dset::caption::caption_file_exists_and_not_empty;
+/// 
+/// async fn example() -> bool {
+///     let path = Path::new("caption.txt");
+///     caption_file_exists_and_not_empty(&path).await
+/// }
+/// ```
+pub async fn caption_file_exists_and_not_empty(path: &Path) -> bool {
+    if path.exists() {
+        match tokio::fs::read_to_string(path).await {
+            Ok(content) => !content.trim().is_empty(),
+            Err(_) => false,
+        }
+    } else {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +225,31 @@ mod tests {
     fn test_json_to_text_unsupported_format() {
         let json = json!(42);
         assert!(json_to_text(&json).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_caption_file_exists_and_not_empty() -> anyhow::Result<()> {
+        let temp_dir = TempDir::new()?;
+        
+        // Test non-existent file
+        let non_existent = temp_dir.path().join("non_existent.txt");
+        assert!(!caption_file_exists_and_not_empty(&non_existent).await);
+        
+        // Test empty file
+        let empty_file = temp_dir.path().join("empty.txt");
+        fs::write(&empty_file, "")?;
+        assert!(!caption_file_exists_and_not_empty(&empty_file).await);
+        
+        // Test whitespace-only file
+        let whitespace_file = temp_dir.path().join("whitespace.txt");
+        fs::write(&whitespace_file, "   \n  \t  ")?;
+        assert!(!caption_file_exists_and_not_empty(&whitespace_file).await);
+        
+        // Test file with content
+        let content_file = temp_dir.path().join("content.txt");
+        fs::write(&content_file, "This is a caption")?;
+        assert!(caption_file_exists_and_not_empty(&content_file).await);
+        
+        Ok(())
     }
 }

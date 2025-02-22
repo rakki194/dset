@@ -282,6 +282,53 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Renames a file to remove the image extension.
+///
+/// This function removes common image extensions (.jpeg, .png, .jpg) from a file name.
+/// It's useful for cleaning up file names in datasets or when processing image files.
+///
+/// # Arguments
+/// * `path` - Path to the file to rename
+///
+/// # Returns
+/// * `io::Result<()>` - Success or failure of the operation
+///
+/// # Errors
+/// Returns an error if:
+/// * The file cannot be renamed
+/// * The file system operation fails
+///
+/// # Example
+/// ```no_run
+/// use dset::{Path, rename_file_without_image_extension};
+/// 
+/// async fn example() -> std::io::Result<()> {
+///     let path = Path::new("image.jpg");
+///     rename_file_without_image_extension(&path).await?;
+///     Ok(())
+/// }
+/// ```
+#[must_use = "Renames a file and requires handling of the result to ensure the file is properly renamed"]
+pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> {
+    if let Some(old_name) = path.to_str() {
+        if old_name.contains(".jpeg") || old_name.contains(".png") || old_name.contains(".jpg") {
+            let new_name = old_name
+                .replace(".jpeg", "")
+                .replace(".png", "")
+                .replace(".jpg", "");
+            fs::rename(old_name, &new_name).await?;
+            info!("Renamed {old_name} to {new_name}");
+        }
+    }
+    Ok(())
+}
+
+pub use caption::{
+    caption_file_exists_and_not_empty,
+    process_file,
+    json_to_text,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,6 +460,40 @@ mod tests {
         if txt_path.exists() {
             fs::remove_file(&txt_path)?;
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_rename_file_without_image_extension() -> io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        
+        // Test .jpg extension
+        let jpg_path = temp_dir.path().join("test.jpg");
+        fs::write(&jpg_path, "test content")?;
+        rename_file_without_image_extension(&jpg_path).await?;
+        assert!(!jpg_path.exists());
+        assert!(temp_dir.path().join("test").exists());
+
+        // Test .png extension
+        let png_path = temp_dir.path().join("test2.png");
+        fs::write(&png_path, "test content")?;
+        rename_file_without_image_extension(&png_path).await?;
+        assert!(!png_path.exists());
+        assert!(temp_dir.path().join("test2").exists());
+
+        // Test .jpeg extension
+        let jpeg_path = temp_dir.path().join("test3.jpeg");
+        fs::write(&jpeg_path, "test content")?;
+        rename_file_without_image_extension(&jpeg_path).await?;
+        assert!(!jpeg_path.exists());
+        assert!(temp_dir.path().join("test3").exists());
+
+        // Test non-image extension
+        let txt_path = temp_dir.path().join("test4.txt");
+        fs::write(&txt_path, "test content")?;
+        rename_file_without_image_extension(&txt_path).await?;
+        assert!(txt_path.exists()); // Should not be renamed
 
         Ok(())
     }

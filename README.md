@@ -18,12 +18,25 @@ A Rust library for processing and managing dataset-related files, with a focus o
   - Plain text captions
   - JSON captions
   - Automatic format detection
+- Caption file validation:
+  - Check for existence and content
+  - Handle empty and whitespace-only files
 - Tag extraction and probability filtering
 - Special character escaping (e.g., parentheses)
 - Conversion between formats
 - Batch processing capabilities
 
-### 🔄 JSON Processing
+### 🗃️ File Operations
+
+- File management:
+  - Rename files (remove image extensions)
+  - Check file existence
+  - Content validation
+- Batch processing capabilities
+- Efficient async I/O operations
+- Format conversions
+
+### �� JSON Processing
 
 - Format validation and pretty printing
 - Deep JSON string decoding
@@ -84,16 +97,40 @@ async fn extract_metadata(path: &str) -> Result<()> {
 ### Caption File Processing
 
 ```rust
-use dset::{Path, process_caption_file, process_json_to_caption};
+use dset::{
+    Path,
+    process_caption_file,
+    process_json_to_caption,
+    caption::caption_file_exists_and_not_empty
+};
 use anyhow::Result;
 
 async fn handle_captions() -> Result<()> {
-    // Process a caption file (auto-detects format)
-    process_caption_file(Path::new("image1.txt")).await?;
+    let path = Path::new("image1.txt");
+    
+    // Check if caption file exists and has content
+    if caption_file_exists_and_not_empty(&path).await {
+        // Process the caption file (auto-detects format)
+        process_caption_file(&path).await?;
+    }
     
     // Convert JSON caption to text format
     process_json_to_caption(Path::new("image2.json")).await?;
     
+    Ok(())
+}
+```
+
+### File Operations
+
+```rust
+use dset::{Path, rename_file_without_image_extension};
+use std::io;
+
+async fn handle_files() -> io::Result<()> {
+    // Remove image extension from a file
+    let path = Path::new("image.jpg");
+    rename_file_without_image_extension(&path).await?;  // Will rename to "image"
     Ok(())
 }
 ```
@@ -151,6 +188,7 @@ Manages caption file operations:
 - Format detection
 - JSON/text conversion
 - Tag processing
+- Caption validation
 - Batch operations
 
 ### `metadata` Module
