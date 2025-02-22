@@ -36,7 +36,7 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - Efficient async I/O operations
 - Format conversions
 
-### �� JSON Processing
+### 🔢 JSON Processing
 
 - Format validation and pretty printing
 - Deep JSON string decoding
@@ -128,9 +128,14 @@ use dset::{Path, rename_file_without_image_extension};
 use std::io;
 
 async fn handle_files() -> io::Result<()> {
-    // Remove image extension from a file
-    let path = Path::new("image.jpg");
-    rename_file_without_image_extension(&path).await?;  // Will rename to "image"
+    // Remove intermediate image extensions from files
+    let path = Path::new("image.jpg.toml");
+    rename_file_without_image_extension(&path).await?;  // Will rename to "image.toml"
+    
+    // Won't modify files that are actually images
+    let img = Path::new("photo.jpg");
+    rename_file_without_image_extension(&img).await?;  // Will remain "photo.jpg"
+    
     Ok(())
 }
 ```
@@ -169,59 +174,6 @@ fn process_tags_and_text() {
     println!("Text: {}", sentences);  // "This is the main text."
 }
 ```
-
-## Module Structure
-
-### `st` Module
-
-Handles SafeTensors file processing:
-
-- Memory-mapped file reading
-- Metadata extraction
-- JSON conversion
-- Async file operations
-
-### `caption` Module
-
-Manages caption file operations:
-
-- Format detection
-- JSON/text conversion
-- Tag processing
-- Caption validation
-- Batch operations
-
-### `metadata` Module
-
-Provides metadata processing utilities:
-
-- JSON string decoding
-- Nested structure handling
-- Training metadata extraction
-- Special field processing
-
-## Advanced Features
-
-### SafeTensors Metadata Processing
-
-- Automatic detection and parsing of nested JSON strings
-- Support for complex metadata structures
-- Efficient memory mapping for large files
-- Pretty-printed JSON output
-
-### Caption Processing
-
-- Probability-based tag filtering (>0.2 by default)
-- Special character escaping in tags
-- Automatic format detection
-- Efficient batch processing
-
-### JSON Processing
-
-- Deep JSON string decoding
-- Support for complex nested structures
-- Efficient memory usage
-- Pretty printing capabilities
 
 ## Error Handling
 

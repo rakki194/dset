@@ -282,10 +282,16 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Renames a file to remove the image extension.
+/// Renames a file to remove any image extensions that appear between the base filename and the actual extension.
 ///
-/// This function removes common image extensions (.jpeg, .png, .jpg) from a file name.
-/// It's useful for cleaning up file names in datasets or when processing image files.
+/// For example:
+/// - `image.jpg.toml` -> `image.toml`
+/// - `image.jpeg.json` -> `image.json`
+/// - `image.png` -> `image.png` (unchanged)
+/// - `image.png.jpg` -> `image.jpg`
+///
+/// This is useful for cleaning up file names in datasets where image extensions might have been
+/// accidentally preserved when converting files to other formats.
 ///
 /// # Arguments
 /// * `path` - Path to the file to rename
@@ -303,21 +309,38 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 /// use dset::{Path, rename_file_without_image_extension};
 /// 
 /// async fn example() -> std::io::Result<()> {
-///     let path = Path::new("image.jpg");
-///     rename_file_without_image_extension(&path).await?;
+///     let path = Path::new("image.jpg.toml");
+///     rename_file_without_image_extension(&path).await?;  // Will rename to "image.toml"
 ///     Ok(())
 /// }
 /// ```
 #[must_use = "Renames a file and requires handling of the result to ensure the file is properly renamed"]
 pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> {
     if let Some(old_name) = path.to_str() {
-        if old_name.contains(".jpeg") || old_name.contains(".png") || old_name.contains(".jpg") {
-            let new_name = old_name
-                .replace(".jpeg", "")
-                .replace(".png", "")
-                .replace(".jpg", "");
-            fs::rename(old_name, &new_name).await?;
-            info!("Renamed {old_name} to {new_name}");
+        // Split the path into components
+        let parts: Vec<&str> = old_name.split('.').collect();
+        
+        // Only proceed if we have at least 3 parts (name.img_ext.real_ext)
+        if parts.len() >= 3 {
+            // Check if any middle extension is an image extension
+            let mut has_image_ext = false;
+            for ext in &parts[1..parts.len()-1] {
+                if matches!(ext.to_lowercase().as_str(), "jpg" | "jpeg" | "png") {
+                    has_image_ext = true;
+                    break;
+                }
+            }
+
+            if has_image_ext {
+                // Reconstruct the filename without image extensions
+                let mut new_name = String::from(parts[0]);
+                let last_ext = parts.last().unwrap();
+                new_name.push('.');
+                new_name.push_str(last_ext);
+
+                fs::rename(old_name, &new_name).await?;
+                info!("Renamed {old_name} to {new_name}");
+            }
         }
     }
     Ok(())
@@ -468,32 +491,44 @@ mod tests {
     async fn test_rename_file_without_image_extension() -> io::Result<()> {
         let temp_dir = TempDir::new()?;
         
-        // Test .jpg extension
-        let jpg_path = temp_dir.path().join("test.jpg");
-        fs::write(&jpg_path, "test content")?;
-        rename_file_without_image_extension(&jpg_path).await?;
-        assert!(!jpg_path.exists());
-        assert!(temp_dir.path().join("test").exists());
+        // Test file with image extension between base name and real extension
+        let path1 = temp_dir.path().join("test.jpg.toml");
+        fs::write(&path1, "test content")?;
+        rename_file_without_image_extension(&path1).await?;
+        assert!(!path1.exists());
+        assert!(temp_dir.path().join("test.toml").exists());
 
-        // Test .png extension
-        let png_path = temp_dir.path().join("test2.png");
-        fs::write(&png_path, "test content")?;
-        rename_file_without_image_extension(&png_path).await?;
-        assert!(!png_path.exists());
-        assert!(temp_dir.path().join("test2").exists());
+        // Test file with jpeg extension
+        let path2 = temp_dir.path().join("test2.jpeg.json");
+        fs::write(&path2, "test content")?;
+        rename_file_without_image_extension(&path2).await?;
+        assert!(!path2.exists());
+        assert!(temp_dir.path().join("test2.json").exists());
 
-        // Test .jpeg extension
-        let jpeg_path = temp_dir.path().join("test3.jpeg");
-        fs::write(&jpeg_path, "test content")?;
-        rename_file_without_image_extension(&jpeg_path).await?;
-        assert!(!jpeg_path.exists());
-        assert!(temp_dir.path().join("test3").exists());
+        // Test file with multiple image extensions
+        let path3 = temp_dir.path().join("test3.jpg.png.txt");
+        fs::write(&path3, "test content")?;
+        rename_file_without_image_extension(&path3).await?;
+        assert!(!path3.exists());
+        assert!(temp_dir.path().join("test3.txt").exists());
 
-        // Test non-image extension
-        let txt_path = temp_dir.path().join("test4.txt");
-        fs::write(&txt_path, "test content")?;
-        rename_file_without_image_extension(&txt_path).await?;
-        assert!(txt_path.exists()); // Should not be renamed
+        // Test regular image file (should not be renamed)
+        let path4 = temp_dir.path().join("test4.png");
+        fs::write(&path4, "test content")?;
+        rename_file_without_image_extension(&path4).await?;
+        assert!(path4.exists()); // Should not be renamed
+
+        // Test non-image file
+        let path5 = temp_dir.path().join("test5.txt");
+        fs::write(&path5, "test content")?;
+        rename_file_without_image_extension(&path5).await?;
+        assert!(path5.exists()); // Should not be renamed
+
+        // Test file with image extension in name
+        let path6 = temp_dir.path().join("myjpg.conf");
+        fs::write(&path6, "test content")?;
+        rename_file_without_image_extension(&path6).await?;
+        assert!(path6.exists()); // Should not be renamed
 
         Ok(())
     }
