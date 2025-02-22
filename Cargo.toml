@@ -1,6 +1,6 @@
 [package]
 name = "dset"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 license = "MIT"
 description = "A Rust library for processing and managing dataset-related files, with a focus on machine learning datasets, captions, and safetensors files"
