@@ -61,7 +61,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dset = "0.1.4"
+dset = "0.1.5"
 ```
 
 ## Usage Examples
