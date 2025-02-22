@@ -196,6 +196,8 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
 ///
 /// # Examples
 /// ```
+/// use dset::split_content;
+/// 
 /// let content = "tag1, tag2, tag3., This is a sentence.";
 /// let (tags, sentence) = split_content(content);
 /// assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);

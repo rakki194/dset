@@ -9,6 +9,7 @@
 //! # Example
 //! ```no_run
 //! use std::path::Path;
+//! use dset::caption::process_file;
 //! 
 //! async fn example() -> anyhow::Result<()> {
 //!     let path = Path::new("captions/example.json");
@@ -42,6 +43,7 @@ use tokio::task;
 /// # Example
 /// ```no_run
 /// use std::path::Path;
+/// use dset::caption::process_file;
 /// 
 /// async fn example() -> anyhow::Result<()> {
 ///     let path = Path::new("caption.txt");
@@ -97,6 +99,7 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
 /// # Example
 /// ```
 /// use serde_json::json;
+/// use dset::caption::json_to_text;
 /// 
 /// # fn main() -> anyhow::Result<()> {
 /// let json = json!({"caption": "Hello world"});
