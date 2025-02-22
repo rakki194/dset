@@ -84,7 +84,7 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
 /// 2. Objects with a "caption" field - extracts and returns the "caption" field value
 ///
 /// # Arguments
-/// * `json` - A reference to a serde_json Value containing the caption data
+/// * `json` - A reference to a `serde_json` Value containing the caption data
 ///
 /// # Returns
 /// * `Ok(String)` - The extracted caption text

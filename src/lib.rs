@@ -330,7 +330,7 @@ mod tests {
 
         // Verify the formatting
         let content = fs::read_to_string(file_path)?;
-        assert!(content.contains("\n")); // Should contain newlines
+        assert!(content.contains('\n')); // Should contain newlines
         assert!(content.contains("  ")); // Should contain indentation
 
         // Verify the content is valid JSON and matches original
