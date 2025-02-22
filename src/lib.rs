@@ -265,19 +265,22 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
             })
             .collect();
 
+        // Sort tags by probability in descending order
         tags.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let output_path = input_path.with_extension("txt");
-        let mut output_file = File::create(output_path).await?;
-        output_file
-            .write_all(
-                tags.iter()
-                    .map(|(tag, _)| tag.clone())
-                    .collect::<Vec<String>>()
-                    .join(", ")
-                    .as_bytes(),
-            )
-            .await?;
+        // Create the output string with tags
+        let tag_string = tags.iter()
+            .map(|(tag, _)| tag.clone())
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        // Only write if we have tags
+        if !tag_string.is_empty() {
+            let output_path = input_path.with_extension("txt");
+            let mut output_file = File::create(&output_path).await?;
+            output_file.write_all(tag_string.as_bytes()).await?;
+            info!("Created caption file: {}", output_path.display());
+        }
     }
     Ok(())
 }
@@ -316,31 +319,38 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 /// ```
 #[must_use = "Renames a file and requires handling of the result to ensure the file is properly renamed"]
 pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> {
-    if let Some(old_name) = path.to_str() {
-        // Split the path into components
-        let parts: Vec<&str> = old_name.split('.').collect();
-        
-        // Only proceed if we have at least 3 parts (name.img_ext.real_ext)
-        if parts.len() >= 3 {
-            // Check if any middle extension is an image extension
-            let mut has_image_ext = false;
-            for ext in &parts[1..parts.len()-1] {
-                if matches!(ext.to_lowercase().as_str(), "jpg" | "jpeg" | "png") {
-                    has_image_ext = true;
-                    break;
-                }
+    // Get the file stem and extension
+    let file_name = path.file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid file name"))?;
+    
+    // Split the filename into parts
+    let parts: Vec<&str> = file_name.split('.').collect();
+    
+    // Only proceed if we have at least 3 parts (name.img_ext.real_ext)
+    if parts.len() >= 3 {
+        // Check if any middle extension is an image extension
+        let mut has_image_ext = false;
+        for ext in &parts[1..parts.len()-1] {
+            if matches!(ext.to_lowercase().as_str(), "jpg" | "jpeg" | "png") {
+                has_image_ext = true;
+                break;
             }
+        }
 
-            if has_image_ext {
-                // Reconstruct the filename without image extensions
-                let mut new_name = String::from(parts[0]);
-                let last_ext = parts.last().unwrap();
-                new_name.push('.');
-                new_name.push_str(last_ext);
+        if has_image_ext {
+            // Reconstruct the filename without image extensions
+            let mut new_name = String::from(parts[0]);
+            let last_ext = parts.last().unwrap();
+            new_name.push('.');
+            new_name.push_str(last_ext);
 
-                fs::rename(old_name, &new_name).await?;
-                info!("Renamed {old_name} to {new_name}");
-            }
+            // Create the new path in the same directory
+            let parent = path.parent().unwrap_or_else(|| Path::new(""));
+            let new_path = parent.join(new_name);
+
+            fs::rename(path, &new_path).await?;
+            info!("Renamed {} to {}", path.display(), new_path.display());
         }
     }
     Ok(())
