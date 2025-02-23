@@ -211,7 +211,7 @@ pub fn split_content(content: &str) -> (Vec<String>, String) {
         .map(str::trim)
         .map(String::from)
         .collect();
-    let sentences = split.get(1).unwrap_or(&"").to_string();
+    let sentences = (*split.get(1).unwrap_or(&"")).to_string();
     (tags, sentences.trim().to_string())
 }
 
