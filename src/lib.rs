@@ -310,7 +310,8 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 ///
 /// # Example
 /// ```no_run
-/// use dset::{Path, rename_file_without_image_extension};
+/// use std::path::Path;
+/// use dset::rename_file_without_image_extension;
 /// 
 /// async fn example() -> std::io::Result<()> {
 ///     let path = Path::new("image.jpg.toml");
