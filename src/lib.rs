@@ -23,11 +23,11 @@ pub use xio;
 // Re-export commonly used types
 use anyhow::{Context, Result};
 use serde_json::Value;
-pub use std::path::{Path, PathBuf};
-use tokio::{
-    fs::{self, File, write},
-    io::{self, AsyncWriteExt},
+use std::{
+    path::{Path, PathBuf},
+    io,
 };
+use tokio::fs;
 
 /// Extracts and parses JSON metadata from a safetensors file.
 ///
@@ -93,7 +93,7 @@ pub async fn process_safetensors_file(path: &Path) -> Result<()> {
     let json = get_json_metadata(path)?;
     let pretty_json = serde_json::to_string_pretty(&json)?;
     info!("{pretty_json}");
-    write(path.with_extension("json"), pretty_json).await?;
+    fs::write(path.with_extension("json"), pretty_json).await?;
     Ok(())
 }
 
@@ -190,7 +190,7 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
 /// * `content` - The string to split, expected to be in the format "tags., sentence"
 ///
 /// # Returns
-/// * `(Vec<&str>, &str)` - A tuple containing:
+/// * `(Vec<String>, String)` - A tuple containing:
 ///   * A vector of tag strings
 ///   * The remaining sentence text
 ///
@@ -204,11 +204,15 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
 /// assert_eq!(sentence, "This is a sentence.");
 /// ```
 #[must_use = "Splits content into tags and sentences and the result should be checked"]
-pub fn split_content(content: &str) -> (Vec<&str>, &str) {
+pub fn split_content(content: &str) -> (Vec<String>, String) {
     let split: Vec<_> = content.split("., ").collect();
-    let tags: Vec<_> = split[0].split(',').map(str::trim).collect();
-    let sentences = split.get(1).unwrap_or(&"");
-    (tags, sentences.trim())
+    let tags: Vec<_> = split[0]
+        .split(',')
+        .map(str::trim)
+        .map(String::from)
+        .collect();
+    let sentences = split.get(1).unwrap_or(&"").to_string();
+    (tags, sentences.trim().to_string())
 }
 
 /// Converts a JSON file containing tag probabilities into a caption file.
@@ -247,41 +251,26 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 
     let content = fs::read_to_string(input_path).await?;
     let json: Value = serde_json::from_str(&content)?;
+    info!("Processing JSON: {}", json);
 
+    let mut tags = Vec::new();
     if let Value::Object(map) = json {
-        let mut tags: Vec<(String, f64)> = map
-            .iter()
-            .filter_map(|(key, value)| {
-                if let Value::Number(num) = value {
-                    let probability = num.as_f64().unwrap_or(0.0);
-                    if probability > 0.2 {
-                        Some((key.replace('(', "\\(").replace(')', "\\)"), probability))
-                    } else {
-                        None
+        for (tag, prob) in map {
+            if let Value::Number(prob) = prob {
+                if let Some(prob) = prob.as_f64() {
+                    if prob >= 0.2 {
+                        tags.push((tag, prob));
                     }
-                } else {
-                    None
                 }
-            })
-            .collect();
-
-        // Sort tags by probability in descending order
-        tags.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Create the output string with tags
-        let tag_string = tags.iter()
-            .map(|(tag, _)| tag.clone())
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        // Only write if we have tags
-        if !tag_string.is_empty() {
-            let output_path = input_path.with_extension("txt");
-            let mut output_file = File::create(&output_path).await?;
-            output_file.write_all(tag_string.as_bytes()).await?;
-            info!("Created caption file: {}", output_path.display());
+            }
         }
     }
+
+    tags.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    let tags: Vec<_> = tags.into_iter().map(|(tag, _)| tag).collect();
+
+    let output = format!("{}., ", tags.join(", "));
+    fs::write(input_path.with_extension("txt"), output).await?;
     Ok(())
 }
 
