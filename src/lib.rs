@@ -267,7 +267,13 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
     }
 
     tags.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    let tags: Vec<_> = tags.into_iter().map(|(tag, _)| tag).collect();
+    let tags: Vec<_> = tags.into_iter()
+        .map(|(tag, _)| {
+            // Escape special characters with backslashes
+            tag.replace('(', "\\(")
+               .replace(')', "\\)")
+        })
+        .collect();
 
     let output = format!("{}., ", tags.join(", "));
     fs::write(input_path.with_extension("txt"), output).await?;
