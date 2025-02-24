@@ -70,11 +70,8 @@ A Rust library for processing and managing dataset-related files, with a focus o
 
 ## Installation
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-dset = "0.1.6"
+```bash
+cargo add dset
 ```
 
 ## Usage Examples
