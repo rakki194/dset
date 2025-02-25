@@ -17,6 +17,7 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - Multi-format support:
   - Plain text captions
   - JSON captions
+  - e621 JSON format support
   - Automatic format detection
 - Caption file validation:
   - Check for existence and content
@@ -25,6 +26,11 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - Special character escaping (e.g., parentheses)
 - Conversion between formats
 - Batch processing capabilities
+- e621 tag processing with artist formatting and filtering
+- Text processing utilities:
+  - String replacement with formatting options
+  - Special character normalization (smart quotes → standard quotes)
+  - Whitespace and newline normalization
 
 ### 🗃️ File Operations
 
@@ -44,6 +50,7 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - Automatic type conversion
 - Support for `None` values
 - Probability-based tag filtering
+- e621 JSON post data extraction
 
 ### 🎯 Content Processing
 
@@ -169,6 +176,44 @@ fn process_tags_and_text() {
     
     println!("Tags: {:?}", tags);  // ["tag1", "tag2", "tag3"]
     println!("Text: {}", sentences);  // "This is the main text."
+}
+```
+
+### E621 JSON Processing
+
+```rust
+use dset::{Path, process_e621_json_file};
+use anyhow::Result;
+
+async fn process_e621() -> Result<()> {
+    // Process an e621 JSON file and create a caption file
+    process_e621_json_file(Path::new("e621_post.json")).await?;
+    
+    // This will create a caption file with the same name but .txt extension
+    // with properly formatted tags from the e621 post data
+    Ok(())
+}
+```
+
+### Text Processing
+
+```rust
+use dset::caption::{format_text_content, replace_string, replace_special_chars};
+use std::path::{Path, PathBuf};
+use anyhow::Result;
+
+async fn example() -> Result<()> {
+    // Format text by normalizing whitespace
+    let formatted = format_text_content("  Multiple    spaces   \n\n  and newlines  ")?;
+    assert_eq!(formatted, "Multiple spaces and newlines");
+    
+    // Replace text in a file
+    replace_string(Path::new("caption.txt"), "old text", "new text").await?;
+    
+    // Replace special characters in a file (smart quotes, etc.)
+    replace_special_chars(PathBuf::from("document.txt")).await?;
+    
+    Ok(())
 }
 ```
 

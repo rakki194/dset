@@ -24,6 +24,9 @@
 use serde_json::Value;
 use std::path::Path;
 use tokio::task;
+use regex::Regex;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Processes a caption file by reading its contents and interpreting them as either JSON or plain text.
 ///
@@ -150,6 +153,286 @@ pub async fn caption_file_exists_and_not_empty(path: &Path) -> bool {
     } else {
         false
     }
+}
+
+/// Patterns of tags to be ignored during e621 tag processing.
+pub const IGNORED_E621_TAGS: [&str; 3] = [
+    r"\bconditional_dnp\b",
+    r"^\d{4}$",   // Years
+    r"^\d+:\d+$", // Aspect ratio
+];
+
+/// Checks if a tag should be ignored based on predefined patterns.
+///
+/// # Arguments
+///
+/// * `tag` - A string slice representing the tag to be checked.
+///
+/// # Returns
+///
+/// * `bool` - `true` if the tag matches any pattern in `IGNORED_E621_TAGS`, otherwise `false`.
+pub fn should_ignore_e621_tag(tag: &str) -> bool {
+    IGNORED_E621_TAGS.iter().any(|&ignored_tag_pattern| {
+        let pattern = Regex::new(ignored_tag_pattern).unwrap();
+        pattern.is_match(tag)
+    })
+}
+
+/// Processes and formats e621 tags from the JSON data.
+///
+/// # Arguments
+///
+/// * `tags_dict` - A reference to a JSON Value containing the tags.
+///
+/// # Returns
+///
+/// * `Vec<String>` - A vector of strings containing processed and formatted tags.
+pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
+    let mut processed_tags = Vec::new();
+
+    if let Value::Object(tags) = tags_dict {
+        // Process artist tags first
+        if let Some(Value::Array(artist_tags)) = tags.get("artist") {
+            let artist_tags: Vec<String> = artist_tags
+                .iter()
+                .filter_map(|tag| tag.as_str())
+                .filter(|&tag| !should_ignore_e621_tag(tag))
+                .map(|tag| format!("by {}", tag.replace('_', " ").replace(" (artist)", "")))
+                .collect();
+            processed_tags.extend(artist_tags);
+        }
+        
+        // Process character tags
+        if let Some(Value::Array(char_tags)) = tags.get("character") {
+            let char_tags: Vec<String> = char_tags
+                .iter()
+                .filter_map(|tag| tag.as_str())
+                .filter(|&tag| !should_ignore_e621_tag(tag))
+                .map(|tag| tag.replace('_', " "))
+                .collect();
+            processed_tags.extend(char_tags);
+        }
+        
+        // Process species tags
+        if let Some(Value::Array(species_tags)) = tags.get("species") {
+            let species_tags: Vec<String> = species_tags
+                .iter()
+                .filter_map(|tag| tag.as_str())
+                .filter(|&tag| !should_ignore_e621_tag(tag))
+                .map(|tag| tag.replace('_', " "))
+                .collect();
+            processed_tags.extend(species_tags);
+        }
+        
+        // Process copyright tags
+        if let Some(Value::Array(copyright_tags)) = tags.get("copyright") {
+            let copyright_tags: Vec<String> = copyright_tags
+                .iter()
+                .filter_map(|tag| tag.as_str())
+                .filter(|&tag| !should_ignore_e621_tag(tag))
+                .map(|tag| tag.replace('_', " "))
+                .collect();
+            processed_tags.extend(copyright_tags);
+        }
+        
+        // Process general tags last
+        if let Some(Value::Array(general_tags)) = tags.get("general") {
+            let general_tags: Vec<String> = general_tags
+                .iter()
+                .filter_map(|tag| tag.as_str())
+                .filter(|&tag| {
+                    tag.to_lowercase() != "artist" && 
+                    !should_ignore_e621_tag(tag)
+                })
+                .map(|tag| tag.replace('_', " "))
+                .collect();
+            processed_tags.extend(general_tags);
+        }
+        
+        // Process meta tags - usually just include a few selected ones
+        if let Some(Value::Array(meta_tags)) = tags.get("meta") {
+            let meta_tags: Vec<String> = meta_tags
+                .iter()
+                .filter_map(|tag| tag.as_str())
+                .filter(|&tag| !should_ignore_e621_tag(tag))
+                .map(|tag| tag.replace('_', " "))
+                .collect();
+            processed_tags.extend(meta_tags);
+        }
+    }
+
+    processed_tags
+}
+
+/// Processes e621 JSON data and creates a caption file.
+///
+/// # Arguments
+///
+/// * `data` - A reference to a JSON Value containing the post data.
+/// * `file_path` - A reference to an `Arc<PathBuf>` representing the file path.
+///
+/// # Returns
+///
+/// * `anyhow::Result<()>` - The result of the file writing operation.
+pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> anyhow::Result<()> {
+    if let Some(post) = data.get("post") {
+        if let Some(file_data) = post.get("file") {
+            if let Some(url) = file_data.get("url").and_then(|u| u.as_str()) {
+                use std::path::Path;
+                use crate::xio::write_to_file;
+
+                let filename = Path::new(url).file_stem().unwrap().to_str().unwrap();
+                let caption_path = file_path.with_file_name(format!("{filename}.txt"));
+
+                let rating = post.get("rating").and_then(|r| r.as_str()).unwrap_or("q");
+                let rating_str = match rating {
+                    "s" => "safe, ",
+                    "e" => "nsfw, ",
+                    _ => "questionable, ",
+                };
+
+                let mut caption_content = String::from(rating_str);
+
+                if let Some(tags_data) = post.get("tags") {
+                    let processed_tags = process_e621_tags(tags_data);
+
+                    if !processed_tags.is_empty() {
+                        caption_content.push_str(&processed_tags.join(", "));
+                        write_to_file(&caption_path, &caption_content).await?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Formats text content by removing excessive whitespace and newlines.
+///
+/// This function cleans up text content by:
+/// - Trimming leading/trailing whitespace
+/// - Replacing multiple consecutive spaces with a single space
+/// - Normalizing line endings
+///
+/// # Arguments
+/// * `content` - A string slice containing the text to format
+///
+/// # Returns
+/// * `anyhow::Result<String>` - The formatted text content
+///
+/// # Example
+/// ```
+/// use dset::caption::format_text_content;
+///
+/// # fn main() -> anyhow::Result<()> {
+/// let text = "  This   has  extra   spaces \n\n and newlines  ";
+/// let formatted = format_text_content(text)?;
+/// assert_eq!(formatted, "This has extra spaces and newlines");
+/// # Ok(())
+/// # }
+/// ```
+pub fn format_text_content(content: &str) -> anyhow::Result<String> {
+    // Trim and normalize content
+    let content = content.trim();
+    
+    // Replace multiple spaces with a single space
+    let content = content
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    
+    Ok(content)
+}
+
+/// Replaces all instances of a search string with a replacement string in a file.
+///
+/// This function reads a file, replaces all occurrences of a search string with 
+/// a replacement string, and writes the result back to the file if changes were made.
+///
+/// # Arguments
+/// * `path` - A reference to the Path of the file to process
+/// * `search` - The string to search for
+/// * `replace` - The string to replace with
+///
+/// # Returns
+/// * `anyhow::Result<()>` - Success or failure of the operation
+///
+/// # Example
+/// ```no_run
+/// use std::path::Path;
+/// use dset::caption::replace_string;
+///
+/// async fn example() -> anyhow::Result<()> {
+///     let path = Path::new("caption.txt");
+///     replace_string(path, "old text", "new text").await?;
+///     Ok(())
+/// }
+/// ```
+pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow::Result<()> {
+    // Don't process if search string is empty
+    if search.is_empty() {
+        return Ok(());
+    }
+
+    // Read the file content
+    let content = tokio::fs::read_to_string(path).await?;
+    
+    // Replace the search string with the replacement string
+    let new_content = content.replace(search, replace);
+
+    // If the replacement string is empty, format the text content
+    let new_content = if replace.is_empty() {
+        format_text_content(&new_content)?
+    } else {
+        new_content
+    };
+
+    // Only write back if there were changes
+    if content != new_content {
+        tokio::fs::write(path, new_content).await?;
+    }
+
+    Ok(())
+}
+
+/// Replaces special characters with their keyboard-friendly versions in a file.
+///
+/// This function reads a file, replaces special characters (like smart quotes) with
+/// standard ASCII equivalents, and writes the result back to the file if changes were made.
+///
+/// # Arguments
+/// * `path` - A PathBuf to the file to process
+///
+/// # Returns
+/// * `anyhow::Result<()>` - Success or failure of the operation
+///
+/// # Example
+/// ```no_run
+/// use std::path::PathBuf;
+/// use dset::caption::replace_special_chars;
+///
+/// async fn example() -> anyhow::Result<()> {
+///     let path = PathBuf::from("caption.txt");
+///     replace_special_chars(path).await?;
+///     Ok(())
+/// }
+/// ```
+pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
+    // Read the file content
+    let content = tokio::fs::read_to_string(&path).await?;
+    
+    // Replace special characters with their keyboard-friendly versions
+    let new_content = content
+        .replace('\'', "'")
+        .replace('"', "\"")
+        .replace('"', "\"");
+
+    // Only write back if there were changes
+    if content != new_content {
+        tokio::fs::write(&path, new_content).await?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

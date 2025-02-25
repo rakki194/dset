@@ -26,8 +26,16 @@ use serde_json::Value;
 use std::{
     path::{Path, PathBuf},
     io,
+    sync::Arc,
 };
 use tokio::fs;
+
+// Include test modules
+#[cfg(test)]
+mod tests {
+    pub mod e621_tests;
+    pub mod text_tests;
+}
 
 /// Extracts and parses JSON metadata from a safetensors file.
 ///
@@ -359,190 +367,44 @@ pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> 
     Ok(())
 }
 
+/// Processes an e621 JSON file by extracting post data and creating a caption file.
+///
+/// This function is a convenience wrapper around the functionality in the caption module
+/// specifically for handling e621 JSON files.
+///
+/// # Arguments
+/// * `file_path` - Path to the e621 JSON file to process
+///
+/// # Returns
+/// * `Result<()>` - Success or failure of the operation
+///
+/// # Errors
+/// Returns an error if:
+/// * The file cannot be read
+/// * The content cannot be parsed as JSON
+/// * The caption file cannot be created
+#[must_use = "Processes an e621 JSON file and requires handling of the result to ensure proper conversion"]
+pub async fn process_e621_json_file(file_path: &Path) -> Result<()> {
+    let file_path_arc = Arc::new(file_path.to_path_buf());
+    process_json_file(file_path, |data| {
+        let file_path = Arc::clone(&file_path_arc);
+        let data_owned = data.clone();
+        async move {
+            caption::process_e621_json_data(&data_owned, &file_path)
+                .await
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            Ok(())
+        }
+    })
+    .await
+    .map_err(anyhow::Error::from)
+}
+
 pub use caption::{
     caption_file_exists_and_not_empty,
     process_file,
     json_to_text,
+    format_text_content,
+    replace_special_chars,
+    replace_string,
 };
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_process_json_file() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let file_path = temp_dir.path().join("test.json");
-
-        let test_json = json!({
-            "key1": "value1",
-            "key2": 42
-        });
-
-        fs::write(&file_path, serde_json::to_string_pretty(&test_json)?)?;
-
-        let processed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let processed_clone = processed.clone();
-
-        process_json_file(&file_path, |json| {
-            Box::pin(async move {
-                assert_eq!(json["key1"], "value1");
-                assert_eq!(json["key2"], 42);
-                processed_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-                Ok(())
-            })
-        })
-        .await?;
-
-        assert!(processed.load(std::sync::atomic::Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_format_json_file() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let file_path = temp_dir.path().join("test.json");
-
-        // Write unformatted JSON
-        fs::write(&file_path, r#"{"key1":"value1","key2":42}"#)?;
-
-        format_json_file(file_path.clone()).await?;
-
-        // Verify the formatting
-        let content = fs::read_to_string(file_path)?;
-        assert!(content.contains('\n')); // Should contain newlines
-        assert!(content.contains("  ")); // Should contain indentation
-
-        // Verify the content is valid JSON and matches original
-        let json: Value = serde_json::from_str(&content)?;
-        assert_eq!(json["key1"], "value1");
-        assert_eq!(json["key2"], 42);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_split_content() {
-        // Test basic splitting
-        let content = "tag1, tag2, tag3., This is a test sentence.";
-        let (tags, sentence) = split_content(content);
-        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
-        assert_eq!(sentence, "This is a test sentence.");
-
-        // Test with no sentence
-        let content = "tag1, tag2, tag3";
-        let (tags, sentence) = split_content(content);
-        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
-        assert_eq!(sentence, "");
-
-        // Test with empty content
-        let content = "";
-        let (tags, sentence) = split_content(content);
-        assert_eq!(tags, vec![""]);
-        assert_eq!(sentence, "");
-
-        // Test with extra spaces
-        let content = "tag1 ,  tag2,tag3  ., Some sentence.";
-        let (tags, sentence) = split_content(content);
-        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
-        assert_eq!(sentence, "Some sentence.");
-    }
-
-    #[tokio::test]
-    async fn test_process_json_to_caption() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let json_path = temp_dir.path().join("test.json");
-
-        // Create test JSON with tag probabilities
-        let json = json!({
-            "tag1": 0.9,
-            "tag2": 0.5,
-            "tag3": 0.1,  // Below threshold
-            "tag(special)": 0.8
-        });
-
-        fs::write(&json_path, serde_json::to_string(&json)?)?;
-
-        process_json_to_caption(&json_path).await?;
-
-        // Verify the output
-        let txt_path = json_path.with_extension("txt");
-        assert!(txt_path.exists());
-
-        let content = fs::read_to_string(txt_path)?;
-        assert!(content.contains("tag1"));
-        assert!(content.contains("tag2"));
-        assert!(!content.contains("tag3")); // Should be filtered out
-        assert!(content.contains("tag\\(special\\)")); // Should be escaped
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_process_json_to_caption_invalid_file() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let file_path = temp_dir.path().join("test.txt"); // Wrong extension
-
-        fs::write(&file_path, "not json")?;
-
-        // Process the non-JSON file
-        process_json_to_caption(&file_path).await?;
-
-        // Delete the output file if it exists (cleanup)
-        let txt_path = file_path.with_extension("txt");
-        if txt_path.exists() {
-            fs::remove_file(&txt_path)?;
-        }
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_rename_file_without_image_extension() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        
-        // Test file with image extension between base name and real extension
-        let path1 = temp_dir.path().join("test.jpg.toml");
-        fs::write(&path1, "test content")?;
-        rename_file_without_image_extension(&path1).await?;
-        assert!(!path1.exists());
-        assert!(temp_dir.path().join("test.toml").exists());
-
-        // Test file with jpeg extension
-        let path2 = temp_dir.path().join("test2.jpeg.json");
-        fs::write(&path2, "test content")?;
-        rename_file_without_image_extension(&path2).await?;
-        assert!(!path2.exists());
-        assert!(temp_dir.path().join("test2.json").exists());
-
-        // Test file with multiple image extensions
-        let path3 = temp_dir.path().join("test3.jpg.png.txt");
-        fs::write(&path3, "test content")?;
-        rename_file_without_image_extension(&path3).await?;
-        assert!(!path3.exists());
-        assert!(temp_dir.path().join("test3.txt").exists());
-
-        // Test regular image file (should not be renamed)
-        let path4 = temp_dir.path().join("test4.png");
-        fs::write(&path4, "test content")?;
-        rename_file_without_image_extension(&path4).await?;
-        assert!(path4.exists()); // Should not be renamed
-
-        // Test non-image file
-        let path5 = temp_dir.path().join("test5.txt");
-        fs::write(&path5, "test content")?;
-        rename_file_without_image_extension(&path5).await?;
-        assert!(path5.exists()); // Should not be renamed
-
-        // Test file with image extension in name
-        let path6 = temp_dir.path().join("myjpg.conf");
-        fs::write(&path6, "test content")?;
-        rename_file_without_image_extension(&path6).await?;
-        assert!(path6.exists()); // Should not be renamed
-
-        Ok(())
-    }
-}
