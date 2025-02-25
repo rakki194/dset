@@ -171,6 +171,11 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 /// # Returns
 ///
 /// * `bool` - `true` if the tag matches any pattern in `IGNORED_E621_TAGS`, otherwise `false`.
+///
+/// # Panics
+///
+/// This function will panic if any of the predefined patterns in `IGNORED_E621_TAGS`
+/// cannot be compiled into a valid regular expression.
 #[must_use] pub fn should_ignore_e621_tag(tag: &str) -> bool {
     IGNORED_E621_TAGS.iter().any(|&ignored_tag_pattern| {
         let pattern = Regex::new(ignored_tag_pattern).unwrap();
@@ -264,16 +269,51 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
     processed_tags
 }
 
-/// Processes e621 JSON data and creates a caption file.
+/// Processes JSON data from e621 and creates a caption file.
 ///
 /// # Arguments
 ///
-/// * `data` - A reference to a JSON Value containing the post data.
-/// * `file_path` - A reference to an `Arc<PathBuf>` representing the file path.
+/// * `data` - A reference to the JSON Value containing e621 post data
+/// * `file_path` - A reference to an Arc<PathBuf> representing the target file path
 ///
 /// # Returns
 ///
-/// * `anyhow::Result<()>` - The result of the file writing operation.
+/// * `anyhow::Result<()>` - Success or failure of the operation
+///
+/// # Panics
+///
+/// This function will panic if:
+/// * The URL in the file data cannot be parsed into a valid file stem
+/// * The file stem cannot be converted to a string
+///
+/// # Errors
+///
+/// Returns an error if:
+/// * The caption file cannot be written to disk
+/// * The JSON data structure doesn't match the expected format
+///
+/// # Example
+/// ```no_run
+/// use std::path::PathBuf;
+/// use std::sync::Arc;
+/// use serde_json::json;
+/// use dset::caption::process_e621_json_data;
+///
+/// async fn example() -> anyhow::Result<()> {
+///     let data = json!({
+///         "post": {
+///             "file": {
+///                 "url": "https://example.com/image.jpg"
+///             },
+///             "rating": "s",
+///             "tags": {}
+///         }
+///     });
+///     let path = Arc::new(PathBuf::from("output.txt"));
+///     process_e621_json_data(&data, &path).await?;
+///     Ok(())
+/// }
+/// ```
 pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> anyhow::Result<()> {
     if let Some(post) = data.get("post") {
         if let Some(file_data) = post.get("file") {
@@ -320,6 +360,12 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> a
 /// # Returns
 /// * `anyhow::Result<String>` - The formatted text content
 ///
+/// # Errors
+///
+/// This function currently does not return any errors, but returns Result
+/// for consistency with other functions in the module and to allow for
+/// future error handling.
+///
 /// # Example
 /// ```
 /// use dset::caption::format_text_content;
@@ -357,6 +403,14 @@ pub fn format_text_content(content: &str) -> anyhow::Result<String> {
 /// # Returns
 /// * `anyhow::Result<()>` - Success or failure of the operation
 ///
+/// # Errors
+///
+/// Returns an error if:
+/// * The file cannot be read from the filesystem
+/// * The file contents cannot be decoded as UTF-8 text
+/// * The modified content cannot be written back to the file
+/// * The text content formatting fails when the replacement string is empty
+///
 /// # Example
 /// ```no_run
 /// use std::path::Path;
@@ -369,6 +423,11 @@ pub fn format_text_content(content: &str) -> anyhow::Result<String> {
 /// }
 /// ```
 pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow::Result<()> {
+    // Skip if search string is empty
+    if search.is_empty() {
+        return Ok(());
+    }
+
     // Read the file content
     let content = tokio::fs::read_to_string(path).await?;
     
@@ -399,6 +458,13 @@ pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow:
 /// # Returns
 /// * `anyhow::Result<()>` - Success or failure of the operation
 ///
+/// # Errors
+///
+/// Returns an error if:
+/// * The file cannot be read from the filesystem
+/// * The file contents cannot be decoded as UTF-8 text
+/// * The modified content cannot be written back to the file
+///
 /// # Example
 /// ```no_run
 /// use std::path::PathBuf;
@@ -416,7 +482,6 @@ pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
     
     // Replace special characters with their keyboard-friendly versions
     let new_content = content
-        .replace('\'', "'")
         .replace(['"', '"'], "\"");
 
     // Only write back if there were changes

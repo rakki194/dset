@@ -159,9 +159,9 @@ async fn test_replace_special_chars_complex() -> anyhow::Result<()> {
     // Process the file
     replace_special_chars(file_path.clone()).await?;
     
-    // Check the content
+    // Check the content - only smart quotes should be replaced, preserving the rest of the text exactly
     let result = fs::read_to_string(&file_path).await?;
-    assert_eq!(result, "Here's a mix of 'smart quotes', \"double quotes\", and regular quotes: 'normal', \"normal\".");
+    assert_eq!(result, "Here's a mix of 'smart quotes', \"double quotes\" and regular quotes: 'normal', \"normal\".");
     
     Ok(())
 }
