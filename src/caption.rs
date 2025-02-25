@@ -171,7 +171,7 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 /// # Returns
 ///
 /// * `bool` - `true` if the tag matches any pattern in `IGNORED_E621_TAGS`, otherwise `false`.
-pub fn should_ignore_e621_tag(tag: &str) -> bool {
+#[must_use] pub fn should_ignore_e621_tag(tag: &str) -> bool {
     IGNORED_E621_TAGS.iter().any(|&ignored_tag_pattern| {
         let pattern = Regex::new(ignored_tag_pattern).unwrap();
         pattern.is_match(tag)
@@ -187,7 +187,7 @@ pub fn should_ignore_e621_tag(tag: &str) -> bool {
 /// # Returns
 ///
 /// * `Vec<String>` - A vector of strings containing processed and formatted tags.
-pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
+#[must_use] pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
     let mut processed_tags = Vec::new();
 
     if let Value::Object(tags) = tags_dict {
@@ -401,7 +401,7 @@ pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow:
 /// standard ASCII equivalents, and writes the result back to the file if changes were made.
 ///
 /// # Arguments
-/// * `path` - A PathBuf to the file to process
+/// * `path` - A `PathBuf` to the file to process
 ///
 /// # Returns
 /// * `anyhow::Result<()>` - Success or failure of the operation
@@ -424,8 +424,7 @@ pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
     // Replace special characters with their keyboard-friendly versions
     let new_content = content
         .replace('\'', "'")
-        .replace('"', "\"")
-        .replace('"', "\"");
+        .replace(['"', '"'], "\"");
 
     // Only write back if there were changes
     if content != new_content {
