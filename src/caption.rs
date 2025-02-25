@@ -171,7 +171,7 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 /// # Returns
 ///
 /// * `bool` - `true` if the tag matches any pattern in `IGNORED_E621_TAGS`, otherwise `false`.
-#[must_use] pub fn should_ignore_e621_tag(tag: &str) -> bool {
+pub fn should_ignore_e621_tag(tag: &str) -> bool {
     IGNORED_E621_TAGS.iter().any(|&ignored_tag_pattern| {
         let pattern = Regex::new(ignored_tag_pattern).unwrap();
         pattern.is_match(tag)
@@ -187,7 +187,7 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 /// # Returns
 ///
 /// * `Vec<String>` - A vector of strings containing processed and formatted tags.
-#[must_use] pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
+pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
     let mut processed_tags = Vec::new();
 
     if let Value::Object(tags) = tags_dict {
@@ -369,23 +369,16 @@ pub fn format_text_content(content: &str) -> anyhow::Result<String> {
 /// }
 /// ```
 pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow::Result<()> {
-    // Don't process if search string is empty
-    if search.is_empty() {
-        return Ok(());
-    }
-
     // Read the file content
     let content = tokio::fs::read_to_string(path).await?;
     
     // Replace the search string with the replacement string
-    let new_content = content.replace(search, replace);
+    let mut new_content = content.replace(search, replace);
 
     // If the replacement string is empty, format the text content
-    let new_content = if replace.is_empty() {
-        format_text_content(&new_content)?
-    } else {
-        new_content
-    };
+    if replace.is_empty() {
+        new_content = format_text_content(&new_content)?;
+    }
 
     // Only write back if there were changes
     if content != new_content {
@@ -401,7 +394,7 @@ pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow:
 /// standard ASCII equivalents, and writes the result back to the file if changes were made.
 ///
 /// # Arguments
-/// * `path` - A `PathBuf` to the file to process
+/// * `path` - A PathBuf to the file to process
 ///
 /// # Returns
 /// * `anyhow::Result<()>` - Success or failure of the operation
@@ -424,7 +417,8 @@ pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
     // Replace special characters with their keyboard-friendly versions
     let new_content = content
         .replace('\'', "'")
-        .replace(['"', '"'], "\"");
+        .replace('"', "\"")
+        .replace('"', "\"");
 
     // Only write back if there were changes
     if content != new_content {

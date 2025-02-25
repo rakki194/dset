@@ -161,7 +161,7 @@ async fn test_replace_special_chars_complex() -> anyhow::Result<()> {
     
     // Check the content
     let result = fs::read_to_string(&file_path).await?;
-    assert_eq!(result, "Here's a mix of 'smart quotes', \"double quotes\" and regular quotes: 'normal', \"normal\".");
+    assert_eq!(result, "Here's a mix of 'smart quotes', \"double quotes\", and regular quotes: 'normal', \"normal\".");
     
     Ok(())
 }
