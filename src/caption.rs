@@ -1,32 +1,32 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 //! Caption processing module for handling both JSON and plain text caption files.
-//! 
+//!
 //! This module provides functionality to process caption files in different formats:
 //! - JSON files containing caption data either as direct strings or objects with a "caption" field
 //! - Plain text files containing raw caption text
-//! 
+//!
 //! # Example
 //! ```no_run
 //! use std::path::Path;
 //! use dset::caption::process_file;
-//! 
+//!
 //! async fn example() -> anyhow::Result<()> {
 //!     let path = Path::new("captions/example.json");
 //!     process_file(&path).await?;
 //!     Ok(())
 //! }
 //! ```
-//! 
+//!
 //! The module handles file reading asynchronously and provides error handling for various
 //! failure scenarios including file I/O errors and JSON parsing failures.
 
+use regex::Regex;
 use serde_json::Value;
 use std::path::Path;
-use tokio::task;
-use regex::Regex;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::task;
 
 /// Processes a caption file by reading its contents and interpreting them as either JSON or plain text.
 ///
@@ -47,7 +47,7 @@ use std::sync::Arc;
 /// ```no_run
 /// use std::path::Path;
 /// use dset::caption::process_file;
-/// 
+///
 /// async fn example() -> anyhow::Result<()> {
 ///     let path = Path::new("caption.txt");
 ///     process_file(&path).await?;
@@ -64,12 +64,12 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
 
         // Try to parse as JSON first
         if let Ok(json) = serde_json::from_str::<Value>(&content) {
-            println!("JSON caption for {}: {:#?}", path.display(), json);
+            log::info!("JSON caption for {}: {:#?}", path.display(), json);
             return Ok(());
         }
 
         // If not JSON, treat as plain text
-        println!(
+        log::info!(
             "Plain text caption for {}: {}",
             path.display(),
             content.trim()
@@ -103,7 +103,7 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
 /// ```
 /// use serde_json::json;
 /// use dset::caption::json_to_text;
-/// 
+///
 /// # fn main() -> anyhow::Result<()> {
 /// let json = json!({"caption": "Hello world"});
 /// let text = json_to_text(&json)?;
@@ -138,7 +138,7 @@ pub fn json_to_text(json: &Value) -> anyhow::Result<String> {
 /// ```no_run
 /// use std::path::Path;
 /// use dset::caption::caption_file_exists_and_not_empty;
-/// 
+///
 /// async fn example() -> bool {
 ///     let path = Path::new("caption.txt");
 ///     caption_file_exists_and_not_empty(&path).await
@@ -176,7 +176,8 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 ///
 /// This function will panic if any of the predefined patterns in `IGNORED_E621_TAGS`
 /// cannot be compiled into a valid regular expression.
-#[must_use] pub fn should_ignore_e621_tag(tag: &str) -> bool {
+#[must_use]
+pub fn should_ignore_e621_tag(tag: &str) -> bool {
     IGNORED_E621_TAGS.iter().any(|&ignored_tag_pattern| {
         let pattern = Regex::new(ignored_tag_pattern).unwrap();
         pattern.is_match(tag)
@@ -192,7 +193,8 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 /// # Returns
 ///
 /// * `Vec<String>` - A vector of strings containing processed and formatted tags.
-#[must_use] pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
+#[must_use]
+pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
     let mut processed_tags = Vec::new();
 
     if let Value::Object(tags) = tags_dict {
@@ -206,7 +208,7 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
                 .collect();
             processed_tags.extend(artist_tags);
         }
-        
+
         // Process character tags
         if let Some(Value::Array(char_tags)) = tags.get("character") {
             let char_tags: Vec<String> = char_tags
@@ -217,7 +219,7 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
                 .collect();
             processed_tags.extend(char_tags);
         }
-        
+
         // Process species tags
         if let Some(Value::Array(species_tags)) = tags.get("species") {
             let species_tags: Vec<String> = species_tags
@@ -228,7 +230,7 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
                 .collect();
             processed_tags.extend(species_tags);
         }
-        
+
         // Process copyright tags
         if let Some(Value::Array(copyright_tags)) = tags.get("copyright") {
             let copyright_tags: Vec<String> = copyright_tags
@@ -239,21 +241,18 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
                 .collect();
             processed_tags.extend(copyright_tags);
         }
-        
+
         // Process general tags last
         if let Some(Value::Array(general_tags)) = tags.get("general") {
             let general_tags: Vec<String> = general_tags
                 .iter()
                 .filter_map(|tag| tag.as_str())
-                .filter(|&tag| {
-                    tag.to_lowercase() != "artist" && 
-                    !should_ignore_e621_tag(tag)
-                })
+                .filter(|&tag| tag.to_lowercase() != "artist" && !should_ignore_e621_tag(tag))
                 .map(|tag| tag.replace('_', " "))
                 .collect();
             processed_tags.extend(general_tags);
         }
-        
+
         // Process meta tags - usually just include a few selected ones
         if let Some(Value::Array(meta_tags)) = tags.get("meta") {
             let meta_tags: Vec<String> = meta_tags
@@ -318,8 +317,8 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> a
     if let Some(post) = data.get("post") {
         if let Some(file_data) = post.get("file") {
             if let Some(url) = file_data.get("url").and_then(|u| u.as_str()) {
-                use std::path::Path;
                 use crate::xio::write_to_file;
+                use std::path::Path;
 
                 let filename = Path::new(url).file_stem().unwrap().to_str().unwrap();
                 let caption_path = file_path.with_file_name(format!("{filename}.txt"));
@@ -380,19 +379,16 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> a
 pub fn format_text_content(content: &str) -> anyhow::Result<String> {
     // Trim and normalize content
     let content = content.trim();
-    
+
     // Replace multiple spaces with a single space
-    let content = content
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    
+    let content = content.split_whitespace().collect::<Vec<_>>().join(" ");
+
     Ok(content)
 }
 
 /// Replaces all instances of a search string with a replacement string in a file.
 ///
-/// This function reads a file, replaces all occurrences of a search string with 
+/// This function reads a file, replaces all occurrences of a search string with
 /// a replacement string, and writes the result back to the file if changes were made.
 ///
 /// # Arguments
@@ -430,7 +426,7 @@ pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow:
 
     // Read the file content
     let content = tokio::fs::read_to_string(path).await?;
-    
+
     // Replace the search string with the replacement string
     let mut new_content = content.replace(search, replace);
 
@@ -479,10 +475,9 @@ pub async fn replace_string(path: &Path, search: &str, replace: &str) -> anyhow:
 pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
     // Read the file content
     let content = tokio::fs::read_to_string(&path).await?;
-    
+
     // Replace special characters with their keyboard-friendly versions
-    let new_content = content
-        .replace(['"', '"'], "\"");
+    let new_content = content.replace(['"', '"'], "\"");
 
     // Only write back if there were changes
     if content != new_content {
@@ -570,26 +565,26 @@ mod tests {
     #[tokio::test]
     async fn test_caption_file_exists_and_not_empty() -> anyhow::Result<()> {
         let temp_dir = TempDir::new()?;
-        
+
         // Test non-existent file
         let non_existent = temp_dir.path().join("non_existent.txt");
         assert!(!caption_file_exists_and_not_empty(&non_existent).await);
-        
+
         // Test empty file
         let empty_file = temp_dir.path().join("empty.txt");
         fs::write(&empty_file, "")?;
         assert!(!caption_file_exists_and_not_empty(&empty_file).await);
-        
+
         // Test whitespace-only file
         let whitespace_file = temp_dir.path().join("whitespace.txt");
         fs::write(&whitespace_file, "   \n  \t  ")?;
         assert!(!caption_file_exists_and_not_empty(&whitespace_file).await);
-        
+
         // Test file with content
         let content_file = temp_dir.path().join("content.txt");
         fs::write(&content_file, "This is a caption")?;
         assert!(caption_file_exists_and_not_empty(&content_file).await);
-        
+
         Ok(())
     }
 }

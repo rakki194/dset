@@ -81,6 +81,43 @@ A Rust library for processing and managing dataset-related files, with a focus o
 cargo add dset
 ```
 
+## Logging Configuration
+
+The library uses the `log` crate for logging. To enable logging in your application:
+
+1. Add a logging implementation like `env_logger` to your project:
+
+    ```bash
+    cargo add env_logger
+    ```
+
+2. Initialize the logger in your application:
+
+    ```rust
+    use env_logger;
+
+    fn main() {
+        env_logger::init();
+        // Your code here...
+    }
+    ```
+
+3. Set the log level using the `RUST_LOG` environment variable:
+
+    ```bash
+    export RUST_LOG=info    # Show info and error messages
+    export RUST_LOG=debug   # Show debug, info, and error messages
+    export RUST_LOG=trace   # Show all log messages
+    ```
+
+The library uses different log levels:
+
+- `error`: For unrecoverable errors
+- `warn`: For recoverable errors or unexpected conditions
+- `info`: For important operations and successful processing
+- `debug`: For detailed processing information
+- `trace`: For very detailed debugging information
+
 ## Usage Examples
 
 ### SafeTensors Metadata Extraction
@@ -169,13 +206,14 @@ async fn handle_json() -> Result<()> {
 
 ```rust
 use dset::split_content;
+use log::info;
 
 fn process_tags_and_text() {
     let content = "tag1, tag2, tag3., This is the main text.";
     let (tags, sentences) = split_content(content);
     
-    println!("Tags: {:?}", tags);  // ["tag1", "tag2", "tag3"]
-    println!("Text: {}", sentences);  // "This is the main text."
+    info!("Tags: {:?}", tags);  // ["tag1", "tag2", "tag3"]
+    info!("Text: {}", sentences);  // "This is the main text."
 }
 ```
 
@@ -201,6 +239,7 @@ async fn process_e621() -> Result<()> {
 use dset::caption::{format_text_content, replace_string, replace_special_chars};
 use std::path::{Path, PathBuf};
 use anyhow::Result;
+use log::info;
 
 async fn example() -> Result<()> {
     // Format text by normalizing whitespace
@@ -217,18 +256,20 @@ async fn example() -> Result<()> {
 }
 ```
 
-## Error Handling
+### Error Handling
 
 The library uses `anyhow` for comprehensive error handling:
 
 ```rust
 use dset::Path;
 use anyhow::{Context, Result};
+use log::info;
 
 async fn example() -> Result<()> {
     process_safetensors_file(Path::new("model.safetensors"))
         .await
         .context("Failed to process safetensors file")?;
+    info!("Successfully processed safetensors file");
     Ok(())
 }
 ```
