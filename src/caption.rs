@@ -288,7 +288,7 @@ pub async fn caption_file_exists_and_not_empty(path: &Path) -> bool {
 
 /// Patterns of tags to be ignored during e621 tag processing.
 pub const IGNORED_E621_TAGS: [&str; 3] = [
-    r"\bconditional_dnp\b",
+    r"^conditional_dnp$",
     r"^\d{4}$",   // Years
     r"^\d+:\d+$", // Aspect ratio
 ];
@@ -341,15 +341,12 @@ pub fn process_e621_tags(tags_dict: &Value, config: Option<&E621Config>) -> Vec<
                         .filter_map(|tag| tag.as_str())
                         .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
                         .map(|tag| {
-                            let tag = if config.replace_underscores {
+                            if category == "artist" {
+                                config.format_artist_name(tag)
+                            } else if config.replace_underscores {
                                 tag.replace('_', " ")
                             } else {
                                 tag.to_string()
-                            };
-                            if category == "artist" {
-                                config.format_artist_name(&tag)
-                            } else {
-                                tag
                             }
                         })
                         .collect::<Vec<String>>()

@@ -76,7 +76,7 @@ fn test_process_e621_tags() {
         "general": ["red_background", "2023", "conditional_dnp", "16:9"]
     });
     
-    // Test with default config
+    // Test with default config (filtering enabled, underscore replacement enabled)
     let processed_tags = process_e621_tags(&tags_json, None);
     
     // Check artist formatting
@@ -98,14 +98,30 @@ fn test_process_e621_tags() {
     assert!(!processed_tags.contains(&"conditional_dnp".to_string())); // conditional_dnp should be ignored
     assert!(!processed_tags.contains(&"16:9".to_string())); // aspect ratio should be ignored
 
-    // Test with filtering disabled
-    let config = E621Config::new().with_filter_tags(false);
+    // Test with filtering disabled but underscore replacement still enabled
+    let config = E621Config::new()
+        .with_filter_tags(false)
+        .with_replace_underscores(true);
     let processed_tags = process_e621_tags(&tags_json, Some(&config));
     
     // All tags should be included when filtering is disabled
     assert!(processed_tags.contains(&"2023".to_string())); // year should be included
-    assert!(processed_tags.contains(&"conditional_dnp".to_string())); // conditional_dnp should be included
+    assert!(processed_tags.contains(&"conditional dnp".to_string())); // conditional_dnp should be included with spaces
     assert!(processed_tags.contains(&"16:9".to_string())); // aspect ratio should be included
+    assert!(processed_tags.contains(&"red background".to_string())); // underscores still replaced
+
+    // Test with both filtering and underscore replacement disabled
+    let config = E621Config::new()
+        .with_filter_tags(false)
+        .with_replace_underscores(false);
+    let processed_tags = process_e621_tags(&tags_json, Some(&config));
+    
+    // Tags should preserve underscores and include filtered tags
+    assert!(processed_tags.contains(&"red_background".to_string())); // underscores preserved
+    assert!(processed_tags.contains(&"2023".to_string())); // year included
+    assert!(processed_tags.contains(&"conditional_dnp".to_string())); // conditional_dnp included
+    assert!(processed_tags.contains(&"16:9".to_string())); // aspect ratio included
+    assert!(processed_tags.contains(&"character_name".to_string())); // underscores preserved
 }
 
 #[tokio::test]
