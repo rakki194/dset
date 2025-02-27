@@ -54,6 +54,8 @@ pub struct E621Config {
     pub artist_prefix: Option<String>,
     /// Optional suffix to add after artist names (default: None)
     pub artist_suffix: Option<String>,
+    /// Whether to replace underscores with spaces in tags (default: true)
+    pub replace_underscores: bool,
 }
 
 impl Default for E621Config {
@@ -69,6 +71,7 @@ impl Default for E621Config {
             format: None,
             artist_prefix: Some("by ".to_string()),
             artist_suffix: None,
+            replace_underscores: true,
         }
     }
 }
@@ -112,6 +115,13 @@ impl E621Config {
     #[must_use]
     pub fn with_artist_suffix(mut self, suffix: Option<String>) -> Self {
         self.artist_suffix = suffix;
+        self
+    }
+
+    /// Sets whether to replace underscores with spaces in tags (default: true)
+    #[must_use]
+    pub fn with_replace_underscores(mut self, replace_underscores: bool) -> Self {
+        self.replace_underscores = replace_underscores;
         self
     }
 
@@ -331,17 +341,15 @@ pub fn process_e621_tags(tags_dict: &Value, config: Option<&E621Config>) -> Vec<
                         .filter_map(|tag| tag.as_str())
                         .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
                         .map(|tag| {
-                            if config.filter_tags {
-                                // Only apply formatting when filtering is enabled
-                                let tag = tag.replace('_', " ").replace(" (artist)", "");
-                                if category == "artist" {
-                                    config.format_artist_name(&tag)
-                                } else {
-                                    tag
-                                }
+                            let tag = if config.replace_underscores {
+                                tag.replace('_', " ")
                             } else {
-                                // When filtering is disabled, preserve original tag format
                                 tag.to_string()
+                            };
+                            if category == "artist" {
+                                config.format_artist_name(&tag)
+                            } else {
+                                tag
                             }
                         })
                         .collect::<Vec<String>>()
@@ -434,7 +442,11 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, conf
                                     .filter_map(|tag| tag.as_str())
                                     .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
                                     .map(|tag| {
-                                        let tag = tag.replace('_', " ").replace(" (artist)", "");
+                                        let tag = if config.replace_underscores {
+                                            tag.replace('_', " ")
+                                        } else {
+                                            tag.to_string()
+                                        };
                                         if category == "artist" {
                                             config.format_artist_name(&tag)
                                         } else {
@@ -751,5 +763,25 @@ mod tests {
         assert!(caption_file_exists_and_not_empty(&content_file).await);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_e621_config_underscore_replacement() {
+        let config = E621Config::new()
+            .with_replace_underscores(false);
+        
+        let json = json!({
+            "artist": ["artist_name"],
+            "character": ["character_name"],
+            "general": ["tag_with_underscore"]
+        });
+
+        let tags = process_e621_tags(&json, Some(&config));
+        assert!(tags.iter().any(|t| t.contains('_')), "Tags should preserve underscores when replace_underscores is false");
+
+        let config = E621Config::new()
+            .with_replace_underscores(true);
+        let tags = process_e621_tags(&json, Some(&config));
+        assert!(!tags.iter().any(|t| t.contains('_')), "Tags should not contain underscores when replace_underscores is true");
     }
 }

@@ -26,7 +26,12 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - Special character escaping (e.g., parentheses)
 - Conversion between formats
 - Batch processing capabilities
-- e621 tag processing with artist formatting and filtering
+- e621 tag processing with:
+  - Artist name formatting with prefix/suffix options
+  - Tag filtering for years, aspect ratios, etc.
+  - Optional underscore replacement (spaces vs underscores)
+  - Customizable rating conversions
+  - Custom caption format templates
 - Text processing utilities:
   - String replacement with formatting options
   - Special character normalization (smart quotes → standard quotes)
