@@ -45,7 +45,9 @@ pub struct E621Config {
     /// - {copyright} - Copyright tags
     /// - {general} - General tags
     /// - {meta} - Meta tags
+    ///
     /// Each tag group will be joined with ", " internally.
+    ///
     /// If None, uses the default format: "{rating}, {artists}, {characters}, {species}, {copyright}, {general}, {meta}"
     pub format: Option<String>,
     /// Optional prefix to add before artist names (default: "by ")
@@ -422,63 +424,61 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, conf
                 let mut tag_groups = std::collections::HashMap::new();
                 tag_groups.insert("rating", rating);
 
-                if let Some(tags_data) = post.get("tags") {
-                    if let Value::Object(tags) = tags_data {
-                        // Process each category
-                        let process_category = |category: &str| {
-                            tags.get(category)
-                                .and_then(|t| t.as_array())
-                                .map(|tags| {
-                                    tags.iter()
-                                        .filter_map(|tag| tag.as_str())
-                                        .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
-                                        .map(|tag| {
-                                            let tag = tag.replace('_', " ").replace(" (artist)", "");
-                                            if category == "artist" {
-                                                config.format_artist_name(&tag)
-                                            } else {
-                                                tag
-                                            }
-                                        })
-                                        .collect::<Vec<String>>()
-                                })
-                                .unwrap_or_default()
-                        };
+                if let Some(Value::Object(tags)) = post.get("tags") {
+                    // Process each category
+                    let process_category = |category: &str| {
+                        tags.get(category)
+                            .and_then(|t| t.as_array())
+                            .map(|tags| {
+                                tags.iter()
+                                    .filter_map(|tag| tag.as_str())
+                                    .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
+                                    .map(|tag| {
+                                        let tag = tag.replace('_', " ").replace(" (artist)", "");
+                                        if category == "artist" {
+                                            config.format_artist_name(&tag)
+                                        } else {
+                                            tag
+                                        }
+                                    })
+                                    .collect::<Vec<String>>()
+                            })
+                            .unwrap_or_default()
+                    };
 
-                        // Process each category
-                        let artists = process_category("artist");
-                        let characters = process_category("character");
-                        let species = process_category("species");
-                        let copyright = process_category("copyright");
-                        let general = process_category("general");
-                        let meta = process_category("meta");
+                    // Process each category
+                    let artists = process_category("artist");
+                    let characters = process_category("character");
+                    let species = process_category("species");
+                    let copyright = process_category("copyright");
+                    let general = process_category("general");
+                    let meta = process_category("meta");
 
-                        // Only add non-empty categories
-                        if !artists.is_empty() { tag_groups.insert("artists", artists.join(", ")); }
-                        if !characters.is_empty() { tag_groups.insert("characters", characters.join(", ")); }
-                        if !species.is_empty() { tag_groups.insert("species", species.join(", ")); }
-                        if !copyright.is_empty() { tag_groups.insert("copyright", copyright.join(", ")); }
-                        if !general.is_empty() { tag_groups.insert("general", general.join(", ")); }
-                        if !meta.is_empty() { tag_groups.insert("meta", meta.join(", ")); }
+                    // Only add non-empty categories
+                    if !artists.is_empty() { tag_groups.insert("artists", artists.join(", ")); }
+                    if !characters.is_empty() { tag_groups.insert("characters", characters.join(", ")); }
+                    if !species.is_empty() { tag_groups.insert("species", species.join(", ")); }
+                    if !copyright.is_empty() { tag_groups.insert("copyright", copyright.join(", ")); }
+                    if !general.is_empty() { tag_groups.insert("general", general.join(", ")); }
+                    if !meta.is_empty() { tag_groups.insert("meta", meta.join(", ")); }
 
-                        // Apply the format
-                        let mut caption_content = config.get_format().to_string();
-                        for (key, value) in &tag_groups {
-                            caption_content = caption_content.replace(&format!("{{{key}}}"), value);
-                        }
+                    // Apply the format
+                    let mut caption_content = config.get_format().to_string();
+                    for (key, value) in &tag_groups {
+                        caption_content = caption_content.replace(&format!("{{{key}}}"), value);
+                    }
 
-                        // Clean up empty placeholders
-                        caption_content = caption_content
-                            .replace(", ,", ",")
-                            .replace(",,", ",")
-                            .replace(" ,", ",")
-                            .trim_matches(&[' ', ','][..])
-                            .to_string();
+                    // Clean up empty placeholders
+                    caption_content = caption_content
+                        .replace(", ,", ",")
+                        .replace(",,", ",")
+                        .replace(" ,", ",")
+                        .trim_matches(&[' ', ','][..])
+                        .to_string();
 
-                        // Only write if we have content and either filtering is disabled or we have non-rating tags
-                        if !caption_content.trim().is_empty() && (!config.filter_tags || tag_groups.len() > 1) {
-                            write_to_file(&caption_path, &caption_content).await?;
-                        }
+                    // Only write if we have content and either filtering is disabled or we have non-rating tags
+                    if !caption_content.trim().is_empty() && (!config.filter_tags || tag_groups.len() > 1) {
+                        write_to_file(&caption_path, &caption_content).await?;
                     }
                 }
             }
@@ -628,16 +628,24 @@ pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Process an e621 JSON file and create a caption file.
+/// Process an e621 JSON file and generate caption files.
 ///
 /// # Arguments
 ///
-/// * `file_path` - Path to the e621 JSON file
+/// * `file_path` - Path to the JSON file to process
 /// * `config` - Optional configuration for processing. If None, uses default settings.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// * The file cannot be read
+/// * The file contains invalid JSON
+/// * There are issues writing the caption files
+/// * The JSON structure doesn't match the expected e621 format
 ///
 /// # Returns
 ///
-/// * `anyhow::Result<()>` - Success or failure of the operation
+/// Returns `Ok(())` on success, or an error if any step fails.
 pub async fn process_e621_json_file(file_path: &Path, config: Option<E621Config>) -> anyhow::Result<()> {
     let content = tokio::fs::read_to_string(file_path).await?;
     let json_data: Value = serde_json::from_str(&content)?;

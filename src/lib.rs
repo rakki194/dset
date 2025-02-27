@@ -367,16 +367,24 @@ pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> 
     Ok(())
 }
 
-/// Process an e621 JSON file and create a caption file.
+/// Process an e621 JSON file and generate caption files.
 ///
 /// # Arguments
 ///
-/// * `file_path` - Path to the e621 JSON file
+/// * `file_path` - Path to the JSON file to process
 /// * `config` - Optional configuration for processing. If None, uses default settings.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// * The file cannot be read
+/// * The file contains invalid JSON
+/// * There are issues writing the caption files
+/// * The JSON structure doesn't match the expected e621 format
 ///
 /// # Returns
 ///
-/// * `Result<()>` - Success or failure of the operation
+/// Returns `Ok(())` on success, or an error if any step fails.
 pub async fn process_e621_json_file(file_path: &Path, config: Option<caption::E621Config>) -> Result<()> {
     let content = fs::read_to_string(file_path).await?;
     let data_owned: Value = serde_json::from_str(&content)?;
