@@ -367,37 +367,21 @@ pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> 
     Ok(())
 }
 
-/// Processes an e621 JSON file by extracting post data and creating a caption file.
-///
-/// This function is a convenience wrapper around the functionality in the caption module
-/// specifically for handling e621 JSON files.
+/// Process an e621 JSON file and create a caption file.
 ///
 /// # Arguments
-/// * `file_path` - Path to the e621 JSON file to process
+///
+/// * `file_path` - Path to the e621 JSON file
+/// * `config` - Optional configuration for processing. If None, uses default settings.
 ///
 /// # Returns
-/// * `Result<()>` - Success or failure of the operation
 ///
-/// # Errors
-/// Returns an error if:
-/// * The file cannot be read
-/// * The content cannot be parsed as JSON
-/// * The caption file cannot be created
-#[must_use = "Processes an e621 JSON file and requires handling of the result to ensure proper conversion"]
-pub async fn process_e621_json_file(file_path: &Path) -> Result<()> {
-    let file_path_arc = Arc::new(file_path.to_path_buf());
-    process_json_file(file_path, |data| {
-        let file_path = Arc::clone(&file_path_arc);
-        let data_owned = data.clone();
-        async move {
-            caption::process_e621_json_data(&data_owned, &file_path)
-                .await
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            Ok(())
-        }
-    })
-    .await
-    .map_err(anyhow::Error::from)
+/// * `Result<()>` - Success or failure of the operation
+pub async fn process_e621_json_file(file_path: &Path, config: Option<caption::E621Config>) -> Result<()> {
+    let content = fs::read_to_string(file_path).await?;
+    let data_owned: Value = serde_json::from_str(&content)?;
+    let file_path = Arc::new(file_path.to_path_buf());
+    caption::process_e621_json_data(&data_owned, &file_path, config).await
 }
 
 pub use caption::{

@@ -1,6 +1,6 @@
 [package]
 name = "dset"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 license = "MIT"
 description = "A Rust library for processing and managing dataset-related files, with a focus on machine learning datasets, captions, and safetensors files"
@@ -9,7 +9,7 @@ homepage = "https://github.com/rakki194/dset"
 documentation = "https://docs.rs/dset"
 
 [dependencies]
-xio = { version = "0.1.7" }
+xio = { version = "0.1.9" }
 anyhow = { version = "1.0.96", features = ["backtrace"] }
 safetensors = "0.5.3"
 memmap2 = "0.9.5"

@@ -28,6 +28,125 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::task;
 
+/// Configuration for e621 caption processing.
+#[derive(Debug, Clone)]
+pub struct E621Config {
+    /// Whether to filter out certain tags (years, aspect ratios, etc.)
+    pub filter_tags: bool,
+    /// Custom rating conversions. If None, uses default conversions.
+    /// The map should contain conversions for "s", "q", and "e" ratings.
+    /// If a rating is not found in the map, it will be used as-is.
+    pub rating_conversions: Option<std::collections::HashMap<String, String>>,
+    /// Custom format for the caption. Available placeholders:
+    /// - {rating} - The rating (after conversion)
+    /// - {artists} - Artist tags
+    /// - {characters} - Character tags
+    /// - {species} - Species tags
+    /// - {copyright} - Copyright tags
+    /// - {general} - General tags
+    /// - {meta} - Meta tags
+    /// Each tag group will be joined with ", " internally.
+    /// If None, uses the default format: "{rating}, {artists}, {characters}, {species}, {copyright}, {general}, {meta}"
+    pub format: Option<String>,
+    /// Optional prefix to add before artist names (default: "by ")
+    pub artist_prefix: Option<String>,
+    /// Optional suffix to add after artist names (default: None)
+    pub artist_suffix: Option<String>,
+}
+
+impl Default for E621Config {
+    fn default() -> Self {
+        let mut default_conversions = std::collections::HashMap::new();
+        default_conversions.insert("s".to_string(), "safe".to_string());
+        default_conversions.insert("q".to_string(), "questionable".to_string());
+        default_conversions.insert("e".to_string(), "explicit".to_string());
+
+        Self {
+            filter_tags: true,
+            rating_conversions: Some(default_conversions),
+            format: None,
+            artist_prefix: Some("by ".to_string()),
+            artist_suffix: None,
+        }
+    }
+}
+
+impl E621Config {
+    /// Creates a new configuration with default values
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets whether to filter tags
+    #[must_use]
+    pub fn with_filter_tags(mut self, filter_tags: bool) -> Self {
+        self.filter_tags = filter_tags;
+        self
+    }
+
+    /// Sets custom rating conversions
+    #[must_use]
+    pub fn with_rating_conversions(mut self, conversions: Option<std::collections::HashMap<String, String>>) -> Self {
+        self.rating_conversions = conversions;
+        self
+    }
+
+    /// Sets a custom format string
+    #[must_use]
+    pub fn with_format(mut self, format: Option<String>) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// Sets the artist name prefix (default: "by ")
+    #[must_use]
+    pub fn with_artist_prefix(mut self, prefix: Option<String>) -> Self {
+        self.artist_prefix = prefix;
+        self
+    }
+
+    /// Sets the artist name suffix (default: None)
+    #[must_use]
+    pub fn with_artist_suffix(mut self, suffix: Option<String>) -> Self {
+        self.artist_suffix = suffix;
+        self
+    }
+
+    /// Gets the format string to use
+    fn get_format(&self) -> &str {
+        self.format.as_deref().unwrap_or("{rating}, {artists}, {characters}, {species}, {copyright}, {general}, {meta}")
+    }
+
+    /// Converts a rating using the configured conversions
+    fn convert_rating(&self, rating: &str) -> String {
+        if let Some(conversions) = &self.rating_conversions {
+            if let Some(converted) = conversions.get(rating) {
+                return converted.clone();
+            }
+        }
+        rating.to_string()
+    }
+
+    /// Formats an artist name according to the configuration
+    fn format_artist_name(&self, name: &str) -> String {
+        let name = name.replace('_', " ").replace(" (artist)", "");
+        let mut formatted = String::new();
+        
+        if let Some(prefix) = &self.artist_prefix {
+            formatted.push_str(prefix);
+        }
+        
+        formatted.push_str(&name);
+        
+        if let Some(suffix) = &self.artist_suffix {
+            formatted.push_str(suffix);
+        }
+        
+        formatted
+    }
+}
+
 /// Processes a caption file by reading its contents and interpreting them as either JSON or plain text.
 ///
 /// This function attempts to read the file contents and first tries to parse them as JSON.
@@ -189,79 +308,50 @@ pub fn should_ignore_e621_tag(tag: &str) -> bool {
 /// # Arguments
 ///
 /// * `tags_dict` - A reference to a JSON Value containing the tags.
+/// * `config` - Optional configuration for processing. If None, uses default settings.
 ///
 /// # Returns
 ///
 /// * `Vec<String>` - A vector of strings containing processed and formatted tags.
 #[must_use]
-pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
+pub fn process_e621_tags(tags_dict: &Value, config: Option<&E621Config>) -> Vec<String> {
+    let default_config = E621Config::default();
+    let config = config.unwrap_or(&default_config);
     let mut processed_tags = Vec::new();
 
     if let Value::Object(tags) = tags_dict {
-        // Process artist tags first
-        if let Some(Value::Array(artist_tags)) = tags.get("artist") {
-            let artist_tags: Vec<String> = artist_tags
-                .iter()
-                .filter_map(|tag| tag.as_str())
-                .filter(|&tag| !should_ignore_e621_tag(tag))
-                .map(|tag| format!("by {}", tag.replace('_', " ").replace(" (artist)", "")))
-                .collect();
-            processed_tags.extend(artist_tags);
-        }
+        // Process each tag category
+        let process_category = |category: &str| {
+            tags.get(category)
+                .and_then(|t| t.as_array())
+                .map(|tags| {
+                    tags.iter()
+                        .filter_map(|tag| tag.as_str())
+                        .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
+                        .map(|tag| {
+                            if config.filter_tags {
+                                // Only apply formatting when filtering is enabled
+                                let tag = tag.replace('_', " ").replace(" (artist)", "");
+                                if category == "artist" {
+                                    config.format_artist_name(&tag)
+                                } else {
+                                    tag
+                                }
+                            } else {
+                                // When filtering is disabled, preserve original tag format
+                                tag.to_string()
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                })
+                .unwrap_or_default()
+        };
 
-        // Process character tags
-        if let Some(Value::Array(char_tags)) = tags.get("character") {
-            let char_tags: Vec<String> = char_tags
-                .iter()
-                .filter_map(|tag| tag.as_str())
-                .filter(|&tag| !should_ignore_e621_tag(tag))
-                .map(|tag| tag.replace('_', " "))
-                .collect();
-            processed_tags.extend(char_tags);
-        }
-
-        // Process species tags
-        if let Some(Value::Array(species_tags)) = tags.get("species") {
-            let species_tags: Vec<String> = species_tags
-                .iter()
-                .filter_map(|tag| tag.as_str())
-                .filter(|&tag| !should_ignore_e621_tag(tag))
-                .map(|tag| tag.replace('_', " "))
-                .collect();
-            processed_tags.extend(species_tags);
-        }
-
-        // Process copyright tags
-        if let Some(Value::Array(copyright_tags)) = tags.get("copyright") {
-            let copyright_tags: Vec<String> = copyright_tags
-                .iter()
-                .filter_map(|tag| tag.as_str())
-                .filter(|&tag| !should_ignore_e621_tag(tag))
-                .map(|tag| tag.replace('_', " "))
-                .collect();
-            processed_tags.extend(copyright_tags);
-        }
-
-        // Process general tags last
-        if let Some(Value::Array(general_tags)) = tags.get("general") {
-            let general_tags: Vec<String> = general_tags
-                .iter()
-                .filter_map(|tag| tag.as_str())
-                .filter(|&tag| tag.to_lowercase() != "artist" && !should_ignore_e621_tag(tag))
-                .map(|tag| tag.replace('_', " "))
-                .collect();
-            processed_tags.extend(general_tags);
-        }
-
-        // Process meta tags - usually just include a few selected ones
-        if let Some(Value::Array(meta_tags)) = tags.get("meta") {
-            let meta_tags: Vec<String> = meta_tags
-                .iter()
-                .filter_map(|tag| tag.as_str())
-                .filter(|&tag| !should_ignore_e621_tag(tag))
-                .map(|tag| tag.replace('_', " "))
-                .collect();
-            processed_tags.extend(meta_tags);
+        // Process each category in order
+        let categories = ["artist", "character", "species", "copyright", "general", "meta"];
+        for category in categories {
+            let tags = process_category(category);
+            processed_tags.extend(tags);
         }
     }
 
@@ -274,6 +364,7 @@ pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
 ///
 /// * `data` - A reference to the JSON Value containing e621 post data
 /// * `file_path` - A reference to an Arc<PathBuf> representing the target file path
+/// * `config` - Optional configuration for processing. If None, uses default settings.
 ///
 /// # Returns
 ///
@@ -309,11 +400,13 @@ pub fn process_e621_tags(tags_dict: &Value) -> Vec<String> {
 ///         }
 ///     });
 ///     let path = Arc::new(PathBuf::from("output.txt"));
-///     process_e621_json_data(&data, &path).await?;
+///     process_e621_json_data(&data, &path, None).await?;
 ///     Ok(())
 /// }
 /// ```
-pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> anyhow::Result<()> {
+pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, config: Option<E621Config>) -> anyhow::Result<()> {
+    let config = config.unwrap_or_default();
+
     if let Some(post) = data.get("post") {
         if let Some(file_data) = post.get("file") {
             if let Some(url) = file_data.get("url").and_then(|u| u.as_str()) {
@@ -324,20 +417,68 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>) -> a
                 let caption_path = file_path.with_file_name(format!("{filename}.txt"));
 
                 let rating = post.get("rating").and_then(|r| r.as_str()).unwrap_or("q");
-                let rating_str = match rating {
-                    "s" => "safe, ",
-                    "e" => "nsfw, ",
-                    _ => "questionable, ",
-                };
+                let rating = config.convert_rating(rating);
 
-                let mut caption_content = String::from(rating_str);
+                let mut tag_groups = std::collections::HashMap::new();
+                tag_groups.insert("rating", rating);
 
                 if let Some(tags_data) = post.get("tags") {
-                    let processed_tags = process_e621_tags(tags_data);
+                    if let Value::Object(tags) = tags_data {
+                        // Process each category
+                        let process_category = |category: &str| {
+                            tags.get(category)
+                                .and_then(|t| t.as_array())
+                                .map(|tags| {
+                                    tags.iter()
+                                        .filter_map(|tag| tag.as_str())
+                                        .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
+                                        .map(|tag| {
+                                            let tag = tag.replace('_', " ").replace(" (artist)", "");
+                                            if category == "artist" {
+                                                config.format_artist_name(&tag)
+                                            } else {
+                                                tag
+                                            }
+                                        })
+                                        .collect::<Vec<String>>()
+                                })
+                                .unwrap_or_default()
+                        };
 
-                    if !processed_tags.is_empty() {
-                        caption_content.push_str(&processed_tags.join(", "));
-                        write_to_file(&caption_path, &caption_content).await?;
+                        // Process each category
+                        let artists = process_category("artist");
+                        let characters = process_category("character");
+                        let species = process_category("species");
+                        let copyright = process_category("copyright");
+                        let general = process_category("general");
+                        let meta = process_category("meta");
+
+                        // Only add non-empty categories
+                        if !artists.is_empty() { tag_groups.insert("artists", artists.join(", ")); }
+                        if !characters.is_empty() { tag_groups.insert("characters", characters.join(", ")); }
+                        if !species.is_empty() { tag_groups.insert("species", species.join(", ")); }
+                        if !copyright.is_empty() { tag_groups.insert("copyright", copyright.join(", ")); }
+                        if !general.is_empty() { tag_groups.insert("general", general.join(", ")); }
+                        if !meta.is_empty() { tag_groups.insert("meta", meta.join(", ")); }
+
+                        // Apply the format
+                        let mut caption_content = config.get_format().to_string();
+                        for (key, value) in &tag_groups {
+                            caption_content = caption_content.replace(&format!("{{{}}}", key), value);
+                        }
+
+                        // Clean up empty placeholders
+                        caption_content = caption_content
+                            .replace(", ,", ",")
+                            .replace(",,", ",")
+                            .replace(" ,", ",")
+                            .trim_matches(&[' ', ','][..])
+                            .to_string();
+
+                        // Only write if we have content and either filtering is disabled or we have non-rating tags
+                        if !caption_content.trim().is_empty() && (!config.filter_tags || tag_groups.len() > 1) {
+                            write_to_file(&caption_path, &caption_content).await?;
+                        }
                     }
                 }
             }
@@ -485,6 +626,22 @@ pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Process an e621 JSON file and create a caption file.
+///
+/// # Arguments
+///
+/// * `file_path` - Path to the e621 JSON file
+/// * `config` - Optional configuration for processing. If None, uses default settings.
+///
+/// # Returns
+///
+/// * `anyhow::Result<()>` - Success or failure of the operation
+pub async fn process_e621_json_file(file_path: &Path, config: Option<E621Config>) -> anyhow::Result<()> {
+    let content = tokio::fs::read_to_string(file_path).await?;
+    let json_data: Value = serde_json::from_str(&content)?;
+    process_e621_json_data(&json_data, &Arc::new(file_path.to_path_buf()), config).await
 }
 
 #[cfg(test)]

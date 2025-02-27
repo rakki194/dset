@@ -75,6 +75,197 @@ A Rust library for processing and managing dataset-related files, with a focus o
 - Safe error recovery
 - Proper resource cleanup
 
+## E621 Caption Processing
+
+The library provides comprehensive support for processing e621 JSON post data into standardized caption files. This functionality is particularly useful for creating training datasets from e621 posts.
+
+### Configuration
+
+The processing can be customized using `E621Config`:
+
+```rust
+use dset::{E621Config, Path, process_e621_json_file};
+use std::collections::HashMap;
+use anyhow::Result;
+
+async fn process_with_config() -> Result<()> {
+    // Create a custom configuration
+    let mut custom_ratings = HashMap::new();
+    custom_ratings.insert("s".to_string(), "sfw".to_string());
+    custom_ratings.insert("q".to_string(), "maybe".to_string());
+    custom_ratings.insert("e".to_string(), "nsfw".to_string());
+
+    let config = E621Config::new()
+        .with_filter_tags(false)  // Disable tag filtering
+        .with_rating_conversions(Some(custom_ratings))  // Custom rating names
+        .with_format(Some("Rating: {rating}\nArtists: {artists}\nTags: {general}".to_string()));  // Custom format
+
+    process_e621_json_file(Path::new("e621_post.json"), Some(config)).await
+}
+```
+
+#### Available Options
+
+- **Tag Filtering** (`filter_tags: bool`, default: `true`)
+  - When enabled, filters out noise tags
+  - Can be disabled to include all tags
+
+- **Rating Conversions** (`rating_conversions: Option<HashMap<String, String>>`)
+  - Default conversions:
+    - "s" → "safe"
+    - "q" → "questionable"
+    - "e" → "explicit"
+  - Can be customized or disabled (set to `None` to use raw ratings)
+
+- **Artist Formatting** (new in 0.1.8)
+  - `artist_prefix: Option<String>` (default: `Some("by ")`)
+  - `artist_suffix: Option<String>` (default: `None`)
+  - Customize how artist names are formatted
+  - Set both to `None` for raw artist names
+  - Examples:
+    - Default: "by artist_name" → "by artist name"
+    - Custom prefix: "drawn by artist_name" → "drawn by artist name"
+    - Custom suffix: "artist_name (Artist)" → "artist name (Artist)"
+    - Both: "art by artist_name (verified)" → "art by artist name (verified)"
+    - None: "artist_name" → "artist name"
+
+- **Format String** (`format: Option<String>`)
+  - Default: `"{rating}, {artists}, {characters}, {species}, {copyright}, {general}, {meta}"`
+  - Available placeholders:
+    - `{rating}` - The rating (after conversion)
+    - `{artists}` - Artist tags (with configured formatting)
+    - `{characters}` - Character tags
+    - `{species}` - Species tags
+    - `{copyright}` - Copyright tags
+    - `{general}` - General tags
+    - `{meta}` - Meta tags
+  - Each tag group is internally joined with ", "
+
+### Tag Processing
+
+- **Artist Tags**
+  - Configurable prefix (default: "by ")
+  - Optional suffix
+  - Underscores replaced with spaces
+  - "(artist)" suffix removed from source
+  - Examples:
+    - Default: "artist_name (artist)" → "by artist name"
+    - Custom: "artist_name" → "drawn by artist name (verified)"
+    - Raw: "artist_name" → "artist name"
+
+- **Character Tags**
+  - Underscores replaced with spaces
+  - Original character names preserved
+  - Example: "character_name" → "character name"
+
+- **Species Tags**
+  - Included as-is with spaces
+  - Useful for dataset filtering
+
+- **Copyright Tags**
+  - Source material references preserved
+  - Underscores replaced with spaces
+
+- **General Tags**
+  - Common descriptive tags
+  - Underscores replaced with spaces
+  - Filtered to remove noise
+
+- **Meta Tags**
+  - Selected important meta information
+  - Art medium and style information preserved
+
+### Tag Filtering
+
+Tag filtering is enabled by default but can be disabled. When enabled, it automatically filters out:
+
+- Year tags (e.g., "2023")
+- Aspect ratio tags (e.g., "16:9")
+- Conditional DNP tags
+- Empty or whitespace-only tags
+
+To disable filtering, pass `Some(false)` as the `filter_tags` parameter.
+
+### Caption File Generation
+
+- Creates `.txt` files from e621 JSON posts
+- Filename derived from post's image MD5
+- Format: `[rating], [artist tags], [character tags], [other tags]`
+- Skips generation if no valid tags remain after filtering (when filtering is enabled)
+
+### Example Usage
+
+```rust
+use dset::{E621Config, Path, process_e621_json_file};
+use anyhow::Result;
+
+async fn process_e621() -> Result<()> {
+    // Process with default settings
+    process_e621_json_file(Path::new("e621_post.json"), None).await?;
+    
+    // Process with custom format
+    let config = E621Config::new()
+        .with_format(Some("{rating}\nBy: {artists}\nTags: {general}".to_string()));
+    process_e621_json_file(Path::new("e621_post.json"), Some(config)).await?;
+    
+    // Process with raw ratings (no conversion)
+    let config = E621Config::new()
+        .with_rating_conversions(None);
+    process_e621_json_file(Path::new("e621_post.json"), Some(config)).await?;
+    
+    Ok(())
+}
+```
+
+### Example Outputs
+
+With default settings:
+
+```plaintext
+safe, by artist name, character name, species, tag1, tag2
+```
+
+With custom format:
+
+```plaintext
+Rating: safe
+Artists: by artist name
+Tags: tag1, tag2
+```
+
+With raw ratings:
+
+```plaintext
+s, by artist name, character name, species, tag1, tag2
+```
+
+### Batch Processing Example
+
+```rust
+use dset::{E621Config, Path, process_e621_json_file};
+use anyhow::Result;
+use tokio::fs;
+
+async fn batch_process_e621() -> Result<()> {
+    // Optional: customize processing for all files
+    let config = E621Config::new()
+        .with_filter_tags(false)
+        .with_format(Some("{rating}\n{artists}\n{general}".to_string()));
+    
+    let entries = fs::read_dir("e621_posts").await?;
+    
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "json") {
+                process_e621_json_file(&path, Some(config.clone())).await?;
+            }
+        }
+    }
+    Ok(())
+}
+```
+
 ## Installation
 
 ```bash
@@ -214,22 +405,6 @@ fn process_tags_and_text() {
     
     info!("Tags: {:?}", tags);  // ["tag1", "tag2", "tag3"]
     info!("Text: {}", sentences);  // "This is the main text."
-}
-```
-
-### E621 JSON Processing
-
-```rust
-use dset::{Path, process_e621_json_file};
-use anyhow::Result;
-
-async fn process_e621() -> Result<()> {
-    // Process an e621 JSON file and create a caption file
-    process_e621_json_file(Path::new("e621_post.json")).await?;
-    
-    // This will create a caption file with the same name but .txt extension
-    // with properly formatted tags from the e621 post data
-    Ok(())
 }
 ```
 
