@@ -464,7 +464,7 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, conf
                         // Apply the format
                         let mut caption_content = config.get_format().to_string();
                         for (key, value) in &tag_groups {
-                            caption_content = caption_content.replace(&format!("{{{}}}", key), value);
+                            caption_content = caption_content.replace(&format!("{{{key}}}"), value);
                         }
 
                         // Clean up empty placeholders
