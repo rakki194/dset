@@ -1,8 +1,10 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 use crate::caption::{format_text_content, replace_special_chars, replace_string};
+use crate::process_json_to_caption;
 use tempfile::TempDir;
 use tokio::fs;
+use serde_json::json;
 
 #[test]
 fn test_format_text_content() -> anyhow::Result<()> {
@@ -187,6 +189,39 @@ async fn test_integration_text_processing() -> anyhow::Result<()> {
     // Check the final result
     let result = fs::read_to_string(&file_path).await?;
     assert_eq!(result, "'smart quotes' and excess whitespace.");
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_process_json_to_caption() -> anyhow::Result<()> {
+    let temp_dir = TempDir::new()?;
+    let file_path = temp_dir.path().join("test_tags.json");
+    
+    // Create test JSON with tag probabilities
+    let json_data = json!({
+        "tag1": 0.9,
+        "tag2": 0.5,
+        "tag3": 0.1,  // Below threshold
+        "tag (with parens)": 0.8
+    });
+    
+    fs::write(&file_path, serde_json::to_string_pretty(&json_data)?).await?;
+    
+    // Process the file
+    process_json_to_caption(&file_path).await?;
+    
+    // Check the output file
+    let caption_path = file_path.with_extension("txt");
+    let content = fs::read_to_string(&caption_path).await?;
+    
+    // Verify:
+    // 1. Tags are comma-separated
+    // 2. No trailing period
+    // 3. Tags are sorted by probability
+    // 4. Only tags >= 0.2 are included
+    // 5. Parentheses are escaped
+    assert_eq!(content, "tag1, tag \\(with parens\\), tag2");
     
     Ok(())
 } 

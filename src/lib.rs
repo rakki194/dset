@@ -283,7 +283,7 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
         })
         .collect();
 
-    let output = format!("{}., ", tags.join(", "));
+    let output = tags.join(", ");
     fs::write(input_path.with_extension("txt"), output).await?;
     Ok(())
 }

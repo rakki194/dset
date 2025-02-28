@@ -379,6 +379,68 @@ async fn handle_files() -> io::Result<()> {
 
 ### JSON Processing and Formatting
 
+The library provides two main types of JSON processing capabilities besides the e621 caption processing:
+
+#### 1. Tag Probability JSON Processing
+
+Converts JSON files containing tag-probability pairs into caption files. Tags with probabilities above 0.2 are included in the output.
+
+```json
+{
+    "tag1": 0.9,
+    "tag2": 0.5,
+    "tag3": 0.1
+}
+```
+
+The above JSON would be converted to a caption file containing:
+
+```plaintext
+tag1, tag2
+```
+
+Note that:
+
+- Tags are sorted by probability in descending order
+- Only tags with probability >= 0.2 are included
+- Special characters in tags are escaped (e.g., parentheses)
+- The output is saved as a .txt file with the same base name
+
+Example usage:
+
+```rust
+use dset::{Path, process_json_to_caption};
+use anyhow::Result;
+
+async fn process_tags() -> Result<()> {
+    // Process a JSON file containing tag probabilities
+    // Input: tags.json
+    // {
+    //     "person": 0.98,
+    //     "smiling": 0.85,
+    //     "outdoor": 0.45,
+    //     "blurry": 0.15
+    // }
+    // 
+    // Output: tags.txt
+    // person, smiling, outdoor
+    process_json_to_caption(Path::new("tags.json")).await?;
+    
+    Ok(())
+}
+```
+
+Both functions handle errors gracefully and provide async processing capabilities.
+
+#### 2. General JSON Processing
+
+The library provides two functions for general JSON handling:
+
+1. `format_json_file`: Pretty prints any JSON file with proper indentation
+2. `process_json_file`: Allows custom processing of JSON data with an async handler
+
+Example usage:
+
 ```rust
 use dset::{Path, format_json_file, process_json_file};
 use serde_json::Value;
@@ -397,6 +459,8 @@ async fn handle_json() -> Result<()> {
     Ok(())
 }
 ```
+
+Both functions handle errors gracefully and provide async processing capabilities.
 
 ### Content Splitting
 
