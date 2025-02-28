@@ -122,7 +122,7 @@ async fn process_with_config() -> Result<()> {
     - "e" → "explicit"
   - Can be customized or disabled (set to `None` to use raw ratings)
 
-- **Artist Formatting** (new in 0.1.8)
+- **Artist Formatting**
   - `artist_prefix: Option<String>` (default: `Some("by ")`)
   - `artist_suffix: Option<String>` (default: `None`)
   - Customize how artist names are formatted
