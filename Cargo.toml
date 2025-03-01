@@ -16,7 +16,8 @@ memmap2 = "0.9.5"
 serde_json = "1.0.139"
 tokio = { version = "1.43.0", features = ["full"] }
 log = "0.4.26"
-regex = "1.11.1"
+fancy-regex = "0.14.0"
+serde = { version = "1.0.218", features = ["derive"] }
 
 [lib]
 name = "dset"

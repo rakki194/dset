@@ -189,6 +189,12 @@ Tag filtering is enabled by default but can be disabled. When enabled, it automa
 - Conditional DNP tags
 - Empty or whitespace-only tags
 
+The tag filtering system uses regular expressions for pattern matching and will:
+
+- Skip invalid patterns gracefully (returning false)
+- Handle regex compilation errors by panicking (this should never happen with the built-in patterns)
+- Provide clear error context for debugging
+
 To disable filtering, pass `Some(false)` as the `filter_tags` parameter.
 
 ### Caption File Generation
@@ -270,6 +276,199 @@ async fn batch_process_e621() -> Result<()> {
     Ok(())
 }
 ```
+
+## 🤖 AI Reasoning Dataset
+
+The library provides comprehensive support for managing AI reasoning datasets, particularly useful for training language models in structured reasoning tasks. This functionality helps maintain consistent formatting and organization of reasoning data.
+
+### Data Structure
+
+The reasoning dataset format consists of three main components:
+
+1. **Messages** - Individual conversation messages:
+
+```rust
+Message {
+    content: String,  // The message content
+    role: String,     // The role (e.g., "user", "reasoning", "assistant")
+}
+```
+
+2. **Reasoning Entries** - Complete reasoning interactions:
+
+```rust
+ReasoningEntry {
+    user: String,         // The user's question/request
+    reasoning: String,    // Detailed step-by-step reasoning
+    assistant: String,    // Final summarized response
+    template: String,     // Structured template combining all roles
+    conversations: Vec<Message>,  // Complete conversation history
+}
+```
+
+3. **Dataset Collection** - Collection of reasoning entries:
+
+```rust
+ReasoningDataset {
+    entries: Vec<ReasoningEntry>
+}
+```
+
+### Features
+
+- **Structured Data Management**
+  - Organize reasoning data in a consistent format
+  - Maintain conversation history with role attribution
+  - Track detailed reasoning steps separately from final responses
+
+- **Template Generation**
+  - Automatic creation of structured templates
+  - Consistent formatting with `<|im_start|>` and `<|im_end|>` tokens
+  - Clear separation of user input, reasoning, and responses
+
+- **File Operations**
+  - Asynchronous JSON file loading and saving
+  - Pretty-printed output for readability
+  - Error handling with detailed context
+
+- **Dataset Manipulation**
+  - Add new entries to existing datasets
+  - Query dataset size and emptiness
+  - Efficient memory management
+
+### Example Usage
+
+1. **Creating and Managing Datasets**
+
+```rust
+use dset::reasoning::{ReasoningDataset, ReasoningEntry, Message};
+use anyhow::Result;
+
+async fn manage_dataset() -> Result<()> {
+    // Create a new dataset
+    let mut dataset = ReasoningDataset::new();
+
+    // Create an entry
+    let entry = ReasoningEntry {
+        user: "What motivates Luna?".to_string(),
+        reasoning: "Luna's motivations can be analyzed based on several factors:\n1. Desire for acceptance\n2. Self-expression needs\n3. Personal growth aspirations".to_string(),
+        assistant: "Luna is motivated by acceptance, self-expression, and personal growth.".to_string(),
+        template: ReasoningDataset::create_template(
+            "What motivates Luna?",
+            "Luna's motivations can be analyzed...",
+            "Luna is motivated by acceptance, self-expression, and personal growth."
+        ),
+        conversations: vec![
+            Message {
+                content: "What motivates Luna?".to_string(),
+                role: "user".to_string(),
+            },
+            Message {
+                content: "Luna's motivations can be analyzed...".to_string(),
+                role: "reasoning".to_string(),
+            },
+            Message {
+                content: "Luna is motivated by acceptance, self-expression, and personal growth.".to_string(),
+                role: "assistant".to_string(),
+            },
+        ],
+    };
+
+    // Add entry to dataset
+    dataset.add_entry(entry);
+
+    // Save dataset to file
+    dataset.save("reasoning_data.json").await?;
+
+    // Load dataset from file
+    let loaded_dataset = ReasoningDataset::load("reasoning_data.json").await?;
+    assert_eq!(loaded_dataset.len(), 1);
+
+    Ok(())
+}
+```
+
+2. **Working with Templates**
+
+```rust
+use dset::reasoning::ReasoningDataset;
+
+// Create a template string
+let template = ReasoningDataset::create_template(
+    "What is the best approach?",
+    "Let's analyze this step by step...",
+    "Based on the analysis, the best approach is..."
+);
+
+// Template output format:
+// <|im_start|>user
+// What is the best approach?
+// <|im_end|>
+// <|im_start|>reasoning
+// Let's analyze this step by step...
+// <|im_end|>
+// <|im_start|>assistant
+// Based on the analysis, the best approach is...
+// <|im_end|>
+```
+
+#### JSON Output Format
+
+The dataset is saved in a structured JSON format:
+
+```json
+{
+  "entries": [
+    {
+      "user": "What motivates Luna?",
+      "reasoning": "Luna's motivations can be analyzed...",
+      "assistant": "Luna is motivated by acceptance, self-expression, and personal growth.",
+      "template": "<|im_start|>user\n...<|im_end|>...",
+      "conversations": [
+        {
+          "content": "What motivates Luna?",
+          "role": "user"
+        },
+        {
+          "content": "Luna's motivations can be analyzed...",
+          "role": "reasoning"
+        },
+        {
+          "content": "Luna is motivated by acceptance, self-expression, and personal growth.",
+          "role": "assistant"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Best Practices
+
+1. **Structured Reasoning**
+   - Keep reasoning steps clear and organized
+   - Use numbered lists or bullet points for complex analyses
+   - Maintain consistent formatting across entries
+
+2. **Role Attribution**
+   - Use clear and consistent role names
+   - Standard roles: "user", "reasoning", "assistant"
+   - Consider adding custom roles for specific use cases
+
+3. **Template Management**
+   - Use the provided template generation function
+   - Maintain consistent token usage (`<|im_start|>` and `<|im_end|>`)
+   - Include all relevant conversation components
+
+4. **Error Handling**
+   - Use the Result type for error propagation
+   - Handle file operations with proper error context
+   - Validate data before saving
+
+5. **Async Operations**
+   - Use async/await for file operations
+   - Consider batch processing for large datasets
+   - Implement proper error handling for async operations
 
 ## Installation
 

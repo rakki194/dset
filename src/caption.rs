@@ -21,7 +21,7 @@
 //! The module handles file reading asynchronously and provides error handling for various
 //! failure scenarios including file I/O errors and JSON parsing failures.
 
-use regex::Regex;
+use fancy_regex::Regex;
 use serde_json::Value;
 use std::path::Path;
 use std::path::PathBuf;
@@ -305,13 +305,14 @@ pub const IGNORED_E621_TAGS: [&str; 3] = [
 ///
 /// # Panics
 ///
-/// This function will panic if any of the predefined patterns in `IGNORED_E621_TAGS`
-/// cannot be compiled into a valid regular expression.
+/// This function will panic if:
+/// * Any of the predefined patterns in `IGNORED_E621_TAGS` cannot be compiled into a valid regular expression
+/// * Pattern matching fails due to regex engine errors
 #[must_use]
 pub fn should_ignore_e621_tag(tag: &str) -> bool {
     IGNORED_E621_TAGS.iter().any(|&ignored_tag_pattern| {
         let pattern = Regex::new(ignored_tag_pattern).unwrap();
-        pattern.is_match(tag)
+        pattern.is_match(tag).unwrap_or(false)
     })
 }
 
