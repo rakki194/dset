@@ -78,6 +78,41 @@ pub async fn process_file(path: &Path) -> anyhow::Result<()> {
     .await?
 }
 
+/// Inspects the state dictionary of a targeted safensor file.
+///
+/// This function reads the state dictionary from the specified safensor file
+/// and returns it as a JSON value.
+///
+/// # Arguments
+///
+/// * `path` - The path to the safensor file to inspect.
+///
+/// # Returns
+///
+/// Returns a `Result<Value>` containing the state dictionary as a JSON value
+/// or an error if the operation fails.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The file cannot be read
+/// - The content cannot be parsed as JSON
+pub async fn inspect_state_dict(path: &Path) -> anyhow::Result<Value> {
+    // Read the content of the safensor file as binary
+    let file = File::open(path).context("Failed to open safensor file")?;
+    let mmap = unsafe { Mmap::map(&file) }.context("Failed to memory map safensor file")?;
+
+    // Read the state dictionary from the memory-mapped file
+    let (_header_size, metadata) =
+        SafeTensors::read_metadata(&mmap).context("Failed to read metadata from safensor file")?;
+
+    // Convert the raw metadata to a JSON value
+    let state_dict: Value = serde_json::to_value(&metadata)
+        .context("Failed to convert state dictionary to JSON value")?;
+
+    Ok(state_dict)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

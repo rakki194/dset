@@ -9,6 +9,7 @@ A Rust library for processing and managing dataset-related files, particularly f
   - Decode nested JSON structures
   - Memory-mapped file handling for efficiency
   - Pretty-printed JSON output
+  - **Inspect state dictionary**: Read and inspect the state dictionary of a targeted safensor file.
 
 - **Caption File Handling**
   - Support for multiple formats (JSON, text)
@@ -40,6 +41,24 @@ A Rust library for processing and managing dataset-related files, particularly f
   - Comprehensive error context
   - Recovery mechanisms
   - Detailed logging
+
+## Inspecting State Dictionary
+
+You can now inspect the state dictionary of a targeted safensor file using the `inspect_state_dict` function:
+
+```rust
+use dset::st::inspect_state_dict;
+use std::path::Path;
+use anyhow::Result;
+
+async fn example() -> Result<()> {
+    let state_dict = inspect_state_dict(Path::new("model.safetensors")).await?;
+    println!("State Dictionary: {:?}", state_dict);
+    Ok(())
+}
+```
+
+This function reads the state dictionary from the specified safensor file and returns it as a JSON value.
 
 ## E621 Caption Processing
 
