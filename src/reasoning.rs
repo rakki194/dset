@@ -35,12 +35,19 @@ pub struct ReasoningDataset {
 }
 
 impl ReasoningDataset {
-    /// Creates a new empty ReasoningDataset
+    /// Creates a new empty `ReasoningDataset`
+    #[must_use]
     pub fn new() -> Self {
         Self { entries: Vec::new() }
     }
 
     /// Loads a reasoning dataset from a JSON file
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - The file cannot be read
+    /// - The content cannot be parsed as JSON
     pub async fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path).await?;
         let dataset: ReasoningDataset = serde_json::from_str(&content)?;
@@ -48,6 +55,12 @@ impl ReasoningDataset {
     }
 
     /// Saves the reasoning dataset to a JSON file
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - The file cannot be written
+    /// - The dataset cannot be serialized to JSON
     pub async fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let content = serde_json::to_string_pretty(self)?;
         fs::write(path, content).await?;
@@ -60,20 +73,22 @@ impl ReasoningDataset {
     }
 
     /// Returns the number of entries in the dataset
+    #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Returns true if the dataset is empty
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
     /// Creates a template string from user, reasoning, and assistant content
+    #[must_use]
     pub fn create_template(user: &str, reasoning: &str, assistant: &str) -> String {
         format!(
-            "<|im_start|>user\n{}<|im_end|>\n<|im_start|>reasoning\n{}<|im_end|>\n<|im_start|>assistant\n{}<|im_end|>",
-            user, reasoning, assistant
+            "<|im_start|>user\n{user}<|im_end|>\n<|im_start|>reasoning\n{reasoning}<|im_end|>\n<|im_start|>assistant\n{assistant}<|im_end|>",
         )
     }
 }
