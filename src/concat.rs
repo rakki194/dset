@@ -56,7 +56,7 @@ impl fmt::Display for FileExtensionPreset {
 /// - Caption files (with extension "caption" or "florence") are treated specially:
 ///   - Their content is appended after the concatenated tags
 ///   - They aren't included in tag deduplication
-/// - When remove_duplicates is true, tags from non-caption files are deduplicated
+/// - When `remove_duplicates` is true, tags from non-caption files are deduplicated
 ///
 /// # Example
 /// ```no_run
@@ -155,7 +155,7 @@ async fn read_file_content(path: &Path) -> Result<String> {
 /// 2. Extracts and optionally deduplicates tags from all non-caption files
 /// 3. Appends the caption content after the deduplicated tags
 ///
-/// The resulting format is: "tag1, tag2, tag3, caption_content"
+/// The resulting format is: "tag1, tag2, tag3, `caption_content`"
 ///
 /// # Arguments
 /// * `contents` - Contents of each file to concatenate
@@ -206,7 +206,7 @@ fn concat_tags(contents: &[String], config: &ConcatConfig, file_paths: &[std::pa
         
         // Split by comma and trim each tag
         let tags = content.split(',')
-            .map(|tag| tag.trim())
+            .map(str::trim)
             .filter(|&tag| !tag.is_empty());
             
         for tag in tags {
@@ -256,11 +256,11 @@ pub async fn process_image_file(
     let mut file_paths = Vec::new();
     
     for ext in &config.extensions_to_concat {
-        let ext_file = parent.join(format!("{}.{}", stem, ext));
-        if !ext_file.exists() {
-            missing_files.push(ext_file.to_string_lossy().to_string());
-        } else {
+        let ext_file = parent.join(format!("{stem}.{ext}"));
+        if ext_file.exists() {
             file_paths.push(ext_file);
+        } else {
+            missing_files.push(ext_file.to_string_lossy().to_string());
         }
     }
     
@@ -350,9 +350,8 @@ pub async fn concat_files(
                             debug!("Skipping duplicate file: {}", path.display());
                             skipped.fetch_add(1, Ordering::Relaxed);
                             return Ok(());
-                        } else {
-                            debug!("File is not a duplicate, proceeding: {}", path.display());
                         }
+                        debug!("File is not a duplicate, proceeding: {}", path.display());
                     }
                     
                     // Process the image file
@@ -398,20 +397,14 @@ async fn check_duplicate_content(
     hashes: Arc<tokio::sync::Mutex<HashMap<String, String>>>,
 ) -> bool {
     // Get the stem of the image file (filename without extension)
-    let stem = match path.file_stem() {
-        Some(s) => s.to_string_lossy(),
-        None => {
-            debug!("Could not get file stem for: {}", path.display());
-            return false;
-        },
+    let stem = if let Some(s) = path.file_stem() { s.to_string_lossy() } else {
+        debug!("Could not get file stem for: {}", path.display());
+        return false;
     };
     
-    let parent = match path.parent() {
-        Some(p) => p,
-        None => {
-            debug!("Could not get parent directory for: {}", path.display());
-            return false;
-        },
+    let parent = if let Some(p) = path.parent() { p } else {
+        debug!("Could not get parent directory for: {}", path.display());
+        return false;
     };
     
     debug!("Checking duplicate content for file: {} with stem: {}", path.display(), stem);
@@ -419,7 +412,7 @@ async fn check_duplicate_content(
     // Check if all required files exist
     let mut file_paths = Vec::new();
     for ext in &config.extensions_to_concat {
-        let ext_file = parent.join(format!("{}.{}", stem, ext));
+        let ext_file = parent.join(format!("{stem}.{ext}"));
         if !ext_file.exists() {
             debug!("Missing required file: {}", ext_file.display());
             return false; // Missing file, can't deduplicate
