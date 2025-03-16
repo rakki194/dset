@@ -238,6 +238,21 @@ fn concat_tags(contents: &[String], config: &ConcatConfig, file_paths: &[std::pa
 }
 
 /// Processes a single image file, looking for corresponding files to concatenate
+///
+/// # Arguments
+/// * `image_path` - Path to the image file to process
+/// * `config` - Configuration for the concatenation
+/// * `dry_run` - If true, will only log what would happen without making changes
+///
+/// # Returns
+/// * `Result<bool>` - Success (true) if processing occurred, false if files were missing
+///
+/// # Errors
+/// This function will return an error if:
+/// * The image path doesn't have a valid file stem
+/// * The image path doesn't have a valid parent directory
+/// * Reading any of the related files fails
+/// * Writing the output file fails
 pub async fn process_image_file(
     image_path: &Path, 
     config: &ConcatConfig, 
@@ -295,6 +310,21 @@ pub async fn process_image_file(
 }
 
 /// Walks through a directory and concatenates files according to the configuration
+/// 
+/// # Arguments
+/// * `directory` - Base directory to search for files
+/// * `config` - Configuration for the concatenation process
+/// * `dry_run` - If true, will only log what would happen without making changes
+///
+/// # Returns
+/// * `Result<usize>` - Number of files processed successfully
+///
+/// # Errors
+/// This function will return an error if:
+/// * Directory traversal fails
+/// * File reading operations fail
+/// * File writing operations fail
+/// * Path manipulation operations fail
 pub async fn concat_files(
     directory: &Path, 
     config: &ConcatConfig,
@@ -397,12 +427,13 @@ async fn check_duplicate_content(
     hashes: Arc<tokio::sync::Mutex<HashMap<String, String>>>,
 ) -> bool {
     // Get the stem of the image file (filename without extension)
-    let stem = if let Some(s) = path.file_stem() { s.to_string_lossy() } else {
+    let Some(stem) = path.file_stem() else {
         debug!("Could not get file stem for: {}", path.display());
         return false;
     };
+    let stem = stem.to_string_lossy();
     
-    let parent = if let Some(p) = path.parent() { p } else {
+    let Some(parent) = path.parent() else {
         debug!("Could not get parent directory for: {}", path.display());
         return false;
     };
