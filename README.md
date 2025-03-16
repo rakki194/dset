@@ -17,6 +17,13 @@ A Rust library for processing and managing dataset-related files, particularly f
   - Extract and process tags
   - Batch processing capabilities
 
+- **File Concatenation**
+  - Merge multiple files with different extensions
+  - Remove duplicate tags
+  - Deduplicate based on content hashing
+  - Customizable input and output formats
+  - Predefined presets for common configurations
+
 - **File Operations**
   - Rename files with standardized patterns
   - Check file existence and content
@@ -1084,6 +1091,224 @@ async fn example() -> Result<()> {
     Ok(())
 }
 ```
+
+## File Concatenation
+
+The concat module provides utilities for combining files with different extensions, which is particularly useful for dataset preparation. It supports concatenating tag files, caption files, and other auxiliary files into a single output file with intelligent tag deduplication.
+
+### Overview
+
+- **File Finding**: Recursively finds files with specified base extensions (e.g., `.jpg`, `.png`)
+- **Content Merging**: Combines content from multiple related files (e.g., `.caption`, `.wd`, `.tags`)
+- **Tag Deduplication**: Automatically removes duplicate tags across input files
+- **Content Deduplication**: Optionally skips processing files with identical content based on MD5 hashing
+- **Formatting**: Applies consistent formatting with configurable separators
+- **Dry Run**: Preview changes without modifying files
+
+### Configuration
+
+The module uses two main types to configure concatenation:
+
+#### FileExtensionPreset
+
+Predefined configurations for common use cases:
+
+```rust
+pub enum FileExtensionPreset {
+    /// Concatenates .caption, .wd, .tags files into .txt
+    CaptionWdTags,
+    /// Concatenates .florence, .wd, .tags files
+    FlorenceWdTags,
+}
+```
+
+#### ConcatConfig
+
+Custom configuration for file concatenation:
+
+```rust
+pub struct ConcatConfig {
+    /// Base file extensions to find (without the dot)
+    pub base_extensions: Vec<String>,
+    /// Extensions to concatenate (without the dot)
+    pub extensions_to_concat: Vec<String>,
+    /// Output file extension (without the dot)
+    pub output_extension: String,
+    /// Set to true to remove duplicate tags
+    pub remove_duplicates: bool,
+    /// Tag separator to use when concatenating
+    pub tag_separator: String,
+    /// Set to true to deduplicate files with identical content
+    pub deduplicate_files: bool,
+}
+```
+
+### How It Works
+
+The concatenation process follows these steps:
+
+1. **Directory Traversal**: Walks through the specified directory recursively
+2. **File Matching**: Identifies files with base extensions (e.g., `.png`, `.jpg`)
+3. **Related File Gathering**: For each base file, finds corresponding files with the extensions to concatenate
+4. **Content Reading**: Reads content from each related file
+5. **Optional Deduplication Check**: If enabled, computes an MD5 hash of the combined content and skips if identical to a previously processed file
+6. **Tag Processing**: Extracts tags from all files except caption files (which receive special handling)
+7. **Tag Deduplication**: If enabled, removes duplicate tags and sorts them alphabetically
+8. **Content Concatenation**: Combines all unique tags with the caption content
+9. **Output Writing**: Writes the concatenated content to a new file with the specified output extension
+
+The `concat_tags` function specifically handles:
+- Identifying which file is the caption file based on extension
+- Extracting and optionally deduplicating tags from all non-caption files
+- Appending the caption content after the deduplicated tags
+- Sorting tags alphabetically when deduplication is enabled
+
+### Examples
+
+#### Using a Preset
+
+```rust
+use dset::concat::{ConcatConfig, FileExtensionPreset, concat_files};
+use std::path::Path;
+use anyhow::Result;
+
+async fn concat_with_preset() -> Result<()> {
+    // Use a predefined preset for common configurations
+    let config = ConcatConfig::from_preset(FileExtensionPreset::CaptionWdTags);
+    
+    // Process files in the specified directory
+    let processed_count = concat_files(Path::new("./dataset"), &config, false).await?;
+    println!("Processed {} files", processed_count);
+    
+    Ok(())
+}
+```
+
+#### Custom Configuration with Deduplication
+
+```rust
+use dset::concat::{ConcatConfig, concat_files};
+use std::path::Path;
+use anyhow::Result;
+
+async fn concat_with_deduplication() -> Result<()> {
+    // Create a custom configuration with deduplication enabled
+    let config = ConcatConfig::new(
+        // Base extensions to look for
+        vec!["png".into(), "jpg".into()],
+        // Extensions to concatenate
+        vec!["caption".into(), "wd".into(), "tags".into()],
+        // Output extension
+        "txt".into(),
+        // Remove duplicate tags
+        true,
+        // Tag separator
+        ", ".into(),
+    ).with_deduplication(true);  // Enable file deduplication
+    
+    // Process files with dry run first (preview only)
+    let would_process = concat_files(Path::new("./dataset"), &config, true).await?;
+    println!("Would process {} files", would_process);
+    
+    // Process files for real
+    let processed = concat_files(Path::new("./dataset"), &config, false).await?;
+    println!("Actually processed {} files", processed);
+    println!("Skipped {} duplicates", would_process - processed);
+    
+    Ok(())
+}
+```
+
+#### Processing a Single File
+
+```rust
+use dset::concat::{ConcatConfig, process_image_file};
+use std::path::Path;
+use anyhow::Result;
+
+async fn process_single_file() -> Result<()> {
+    // Create configuration with the CaptionWdTags preset
+    let config = ConcatConfig::from_preset(FileExtensionPreset::CaptionWdTags);
+    
+    // Process a single file
+    let success = process_image_file(
+        Path::new("./dataset/image.jpg"), 
+        &config,
+        false  // Not a dry run
+    ).await?;
+    
+    if success {
+        println!("Successfully processed image.jpg");
+    } else {
+        println!("Failed to process image.jpg (likely missing required files)");
+    }
+    
+    Ok(())
+}
+```
+
+#### Checking for Duplicate Content
+
+```rust
+use dset::concat::{ConcatConfig, check_duplicate_content};
+use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use std::collections::HashMap;
+use anyhow::Result;
+
+async fn check_for_duplicates() -> Result<()> {
+    // Create configuration
+    let config = ConcatConfig::from_preset(FileExtensionPreset::CaptionWdTags)
+        .with_deduplication(true);
+    
+    // Set up the deduplication hash table
+    let content_hashes = Arc::new(Mutex::new(HashMap::new()));
+    
+    // Check if a file is a duplicate
+    let file_path = Path::new("./dataset/image1.jpg");
+    let is_duplicate = check_duplicate_content(
+        &file_path,
+        &config,
+        content_hashes.clone()
+    ).await;
+    
+    if is_duplicate {
+        println!("File is a duplicate of a previously processed file");
+    } else {
+        println!("File is unique");
+    }
+    
+    Ok(())
+}
+```
+
+### Format of Concatenated Output
+
+The default output format is:
+
+```
+tag1, tag2, tag3, tag4, caption_content
+```
+
+Where:
+- Tags are collected from all non-caption files
+- Duplicate tags are removed (if enabled)
+- Tags are sorted alphabetically (when deduplication is enabled)
+- The caption content is appended after the tags
+
+For example, with these input files:
+- `image.jpg` - The base image file
+- `image.caption` - Contains "a photo of a person"
+- `image.wd` - Contains "masterpiece, digital art"
+- `image.tags` - Contains "tag1, tag2, tag3"
+
+The output `image.txt` would contain:
+```
+digital art, masterpiece, tag1, tag2, tag3, a photo of a person
+```
+
+Note that tags from the WebUI description file (`.wd`) are alphabetically sorted.
 
 ## Contributing
 
