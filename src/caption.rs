@@ -92,7 +92,10 @@ impl E621Config {
 
     /// Sets custom rating conversions
     #[must_use]
-    pub fn with_rating_conversions(mut self, conversions: Option<std::collections::HashMap<String, String>>) -> Self {
+    pub fn with_rating_conversions(
+        mut self,
+        conversions: Option<std::collections::HashMap<String, String>>,
+    ) -> Self {
         self.rating_conversions = conversions;
         self
     }
@@ -127,7 +130,9 @@ impl E621Config {
 
     /// Gets the format string to use
     fn get_format(&self) -> &str {
-        self.format.as_deref().unwrap_or("{rating}, {artists}, {characters}, {species}, {copyright}, {general}, {meta}")
+        self.format.as_deref().unwrap_or(
+            "{rating}, {artists}, {characters}, {species}, {copyright}, {general}, {meta}",
+        )
     }
 
     /// Converts a rating using the configured conversions
@@ -144,17 +149,17 @@ impl E621Config {
     fn format_artist_name(&self, name: &str) -> String {
         let name = name.replace('_', " ").replace(" (artist)", "");
         let mut formatted = String::new();
-        
+
         if let Some(prefix) = &self.artist_prefix {
             formatted.push_str(prefix);
         }
-        
+
         formatted.push_str(&name);
-        
+
         if let Some(suffix) = &self.artist_suffix {
             formatted.push_str(suffix);
         }
-        
+
         formatted
     }
 }
@@ -356,7 +361,14 @@ pub fn process_e621_tags(tags_dict: &Value, config: Option<&E621Config>) -> Vec<
         };
 
         // Process each category in order
-        let categories = ["artist", "character", "species", "copyright", "general", "meta"];
+        let categories = [
+            "artist",
+            "character",
+            "species",
+            "copyright",
+            "general",
+            "meta",
+        ];
         for category in categories {
             let tags = process_category(category);
             processed_tags.extend(tags);
@@ -412,7 +424,11 @@ pub fn process_e621_tags(tags_dict: &Value, config: Option<&E621Config>) -> Vec<
 ///     Ok(())
 /// }
 /// ```
-pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, config: Option<E621Config>) -> anyhow::Result<()> {
+pub async fn process_e621_json_data(
+    data: &Value,
+    file_path: &Arc<PathBuf>,
+    config: Option<E621Config>,
+) -> anyhow::Result<()> {
     let config = config.unwrap_or_default();
 
     if let Some(post) = data.get("post") {
@@ -438,7 +454,9 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, conf
                             .map(|tags| {
                                 tags.iter()
                                     .filter_map(|tag| tag.as_str())
-                                    .filter(|&tag| !config.filter_tags || !should_ignore_e621_tag(tag))
+                                    .filter(|&tag| {
+                                        !config.filter_tags || !should_ignore_e621_tag(tag)
+                                    })
                                     .map(|tag| {
                                         let tag = if config.replace_underscores {
                                             tag.replace('_', " ")
@@ -465,12 +483,24 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, conf
                     let meta = process_category("meta");
 
                     // Only add non-empty categories
-                    if !artists.is_empty() { tag_groups.insert("artists", artists.join(", ")); }
-                    if !characters.is_empty() { tag_groups.insert("characters", characters.join(", ")); }
-                    if !species.is_empty() { tag_groups.insert("species", species.join(", ")); }
-                    if !copyright.is_empty() { tag_groups.insert("copyright", copyright.join(", ")); }
-                    if !general.is_empty() { tag_groups.insert("general", general.join(", ")); }
-                    if !meta.is_empty() { tag_groups.insert("meta", meta.join(", ")); }
+                    if !artists.is_empty() {
+                        tag_groups.insert("artists", artists.join(", "));
+                    }
+                    if !characters.is_empty() {
+                        tag_groups.insert("characters", characters.join(", "));
+                    }
+                    if !species.is_empty() {
+                        tag_groups.insert("species", species.join(", "));
+                    }
+                    if !copyright.is_empty() {
+                        tag_groups.insert("copyright", copyright.join(", "));
+                    }
+                    if !general.is_empty() {
+                        tag_groups.insert("general", general.join(", "));
+                    }
+                    if !meta.is_empty() {
+                        tag_groups.insert("meta", meta.join(", "));
+                    }
 
                     // Apply the format
                     let mut caption_content = config.get_format().to_string();
@@ -487,7 +517,9 @@ pub async fn process_e621_json_data(data: &Value, file_path: &Arc<PathBuf>, conf
                         .to_string();
 
                     // Only write if we have content and either filtering is disabled or we have non-rating tags
-                    if !caption_content.trim().is_empty() && (!config.filter_tags || tag_groups.len() > 1) {
+                    if !caption_content.trim().is_empty()
+                        && (!config.filter_tags || tag_groups.len() > 1)
+                    {
                         write_to_file(&caption_path, &caption_content).await?;
                     }
                 }
@@ -656,7 +688,10 @@ pub async fn replace_special_chars(path: PathBuf) -> anyhow::Result<()> {
 /// # Returns
 ///
 /// Returns `Ok(())` on success, or an error if any step fails.
-pub async fn process_e621_json_file(file_path: &Path, config: Option<E621Config>) -> anyhow::Result<()> {
+pub async fn process_e621_json_file(
+    file_path: &Path,
+    config: Option<E621Config>,
+) -> anyhow::Result<()> {
     let content = tokio::fs::read_to_string(file_path).await?;
     let json_data: Value = serde_json::from_str(&content)?;
     process_e621_json_data(&json_data, &Arc::new(file_path.to_path_buf()), config).await
@@ -765,9 +800,8 @@ mod tests {
 
     #[test]
     fn test_e621_config_underscore_replacement() {
-        let config = E621Config::new()
-            .with_replace_underscores(false);
-        
+        let config = E621Config::new().with_replace_underscores(false);
+
         let json = json!({
             "artist": ["artist_name"],
             "character": ["character_name"],
@@ -775,11 +809,16 @@ mod tests {
         });
 
         let tags = process_e621_tags(&json, Some(&config));
-        assert!(tags.iter().any(|t| t.contains('_')), "Tags should preserve underscores when replace_underscores is false");
+        assert!(
+            tags.iter().any(|t| t.contains('_')),
+            "Tags should preserve underscores when replace_underscores is false"
+        );
 
-        let config = E621Config::new()
-            .with_replace_underscores(true);
+        let config = E621Config::new().with_replace_underscores(true);
         let tags = process_e621_tags(&json, Some(&config));
-        assert!(!tags.iter().any(|t| t.contains('_')), "Tags should not contain underscores when replace_underscores is true");
+        assert!(
+            !tags.iter().any(|t| t.contains('_')),
+            "Tags should not contain underscores when replace_underscores is true"
+        );
     }
 }

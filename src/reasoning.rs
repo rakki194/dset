@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
 
@@ -38,13 +38,15 @@ impl ReasoningDataset {
     /// Creates a new empty `ReasoningDataset`
     #[must_use]
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     /// Loads a reasoning dataset from a JSON file
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if:
     /// - The file cannot be read
     /// - The content cannot be parsed as JSON
@@ -55,9 +57,9 @@ impl ReasoningDataset {
     }
 
     /// Saves the reasoning dataset to a JSON file
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if:
     /// - The file cannot be written
     /// - The dataset cannot be serialized to JSON
@@ -108,7 +110,7 @@ mod tests {
     async fn test_dataset_operations() -> Result<()> {
         // Create a new dataset
         let mut dataset = ReasoningDataset::new();
-        
+
         // Create a test entry
         let entry = ReasoningEntry {
             user: "What motivates Luna?".to_string(),
@@ -147,4 +149,4 @@ mod tests {
 
         Ok(())
     }
-} 
+}

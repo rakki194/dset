@@ -1,14 +1,14 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 //! A library for processing and managing dataset-related files and metadata.
-//! 
+//!
 //! This library provides functionality for:
 //! - Processing safetensors files and extracting metadata
 //! - Handling caption files
 //! - Processing and formatting JSON files
 //! - Converting between different file formats (JSON to caption)
 //! - Managing reasoning datasets for AI training
-//! 
+//!
 //! The library is organized into several modules:
 //! - `caption`: Handles caption file processing
 //! - `metadata`: Manages metadata extraction and processing
@@ -17,8 +17,8 @@
 
 pub mod caption;
 pub mod metadata;
-pub mod st;
 pub mod reasoning;
+pub mod st;
 
 use log::info;
 pub use xio;
@@ -27,8 +27,8 @@ pub use xio;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::{
-    path::{Path, PathBuf},
     io,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::fs;
@@ -208,7 +208,7 @@ pub async fn format_json_file(path: PathBuf) -> Result<()> {
 /// # Examples
 /// ```
 /// use dset::split_content;
-/// 
+///
 /// let content = "tag1, tag2, tag3., This is a sentence.";
 /// let (tags, sentence) = split_content(content);
 /// assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
@@ -278,11 +278,11 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
     }
 
     tags.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    let tags: Vec<_> = tags.into_iter()
+    let tags: Vec<_> = tags
+        .into_iter()
         .map(|(tag, _)| {
             // Escape special characters with backslashes
-            tag.replace('(', "\\(")
-               .replace(')', "\\)")
+            tag.replace('(', "\\(").replace(')', "\\)")
         })
         .collect();
 
@@ -323,7 +323,7 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 /// ```no_run
 /// use std::path::Path;
 /// use dset::rename_file_without_image_extension;
-/// 
+///
 /// async fn example() -> std::io::Result<()> {
 ///     let path = Path::new("image.jpg.toml");
 ///     rename_file_without_image_extension(&path).await?;  // Will rename to "image.toml"
@@ -333,18 +333,19 @@ pub async fn process_json_to_caption(input_path: &Path) -> io::Result<()> {
 #[must_use = "Renames a file and requires handling of the result to ensure the file is properly renamed"]
 pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> {
     // Get the file stem and extension
-    let file_name = path.file_name()
+    let file_name = path
+        .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid file name"))?;
-    
+
     // Split the filename into parts
     let parts: Vec<&str> = file_name.split('.').collect();
-    
+
     // Only proceed if we have at least 3 parts (name.img_ext.real_ext)
     if parts.len() >= 3 {
         // Check if any middle extension is an image extension
         let mut has_image_ext = false;
-        for ext in &parts[1..parts.len()-1] {
+        for ext in &parts[1..parts.len() - 1] {
             if matches!(ext.to_lowercase().as_str(), "jpg" | "jpeg" | "png") {
                 has_image_ext = true;
                 break;
@@ -388,7 +389,10 @@ pub async fn rename_file_without_image_extension(path: &Path) -> io::Result<()> 
 /// # Returns
 ///
 /// Returns `Ok(())` on success, or an error if any step fails.
-pub async fn process_e621_json_file(file_path: &Path, config: Option<caption::E621Config>) -> Result<()> {
+pub async fn process_e621_json_file(
+    file_path: &Path,
+    config: Option<caption::E621Config>,
+) -> Result<()> {
     let content = fs::read_to_string(file_path).await?;
     let data_owned: Value = serde_json::from_str(&content)?;
     let file_path = Arc::new(file_path.to_path_buf());
@@ -396,10 +400,6 @@ pub async fn process_e621_json_file(file_path: &Path, config: Option<caption::E6
 }
 
 pub use caption::{
-    caption_file_exists_and_not_empty,
-    process_file,
-    json_to_text,
-    format_text_content,
-    replace_special_chars,
-    replace_string,
+    caption_file_exists_and_not_empty, format_text_content, json_to_text, process_file,
+    replace_special_chars, replace_string,
 };

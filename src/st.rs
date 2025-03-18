@@ -252,7 +252,7 @@ mod tests {
     async fn test_inspect_state_dict() -> anyhow::Result<()> {
         // Create a temporary directory for the test
         let temp_dir = TempDir::new()?;
-        
+
         // Create a test safetensors file with complex metadata
         let metadata = r#"{
             "ss_network_args": {
@@ -265,11 +265,11 @@ mod tests {
                 "tag2": 0.5
             }
         }"#;
-        
+
         // Add tensor definitions to validate shape extraction
         let file_path = temp_dir.path().join("test_model.safetensors");
         let mut file = fs::File::create(&file_path)?;
-        
+
         // Create header with multiple tensors of different shapes
         let header = serde_json::json!({
             "__metadata__": {
@@ -291,31 +291,31 @@ mod tests {
                 "data_offsets": [294912, 295040]  // 32*4 = 128 bytes
             }
         });
-        
+
         // Write header
         let header_str = serde_json::to_string(&header)?;
         let header_bytes = header_str.as_bytes();
         let header_size = (header_bytes.len() as u64).to_le_bytes();
         file.write_all(&header_size)?;
         file.write_all(header_bytes)?;
-        
+
         // Write some dummy tensor data (all zeros for simplicity)
         // We need at least 295040 bytes of tensor data based on the offsets
         file.write_all(&vec![0u8; 295040])?;
-        
+
         // Test the inspect_state_dict function
         let state_dict = inspect_state_dict(&file_path)?;
-        
+
         // Verify the results
         assert!(state_dict.is_object());
         let obj = state_dict.as_object().unwrap();
-        
+
         // Check that we have all expected tensors
         assert!(obj.contains_key("__metadata__"));
         assert!(obj.contains_key("lora_up.weight"));
         assert!(obj.contains_key("lora_down.weight"));
         assert!(obj.contains_key("conv.bias"));
-        
+
         // Check tensor shapes
         let up_weight = obj.get("lora_up.weight").unwrap();
         assert_eq!(up_weight.get("dtype").unwrap().as_str().unwrap(), "F32");
@@ -323,19 +323,19 @@ mod tests {
             up_weight.get("shape").unwrap().as_array().unwrap(),
             &[serde_json::json!(768), serde_json::json!(64)]
         );
-        
+
         let down_weight = obj.get("lora_down.weight").unwrap();
         assert_eq!(down_weight.get("dtype").unwrap().as_str().unwrap(), "F16");
         assert_eq!(
             down_weight.get("shape").unwrap().as_array().unwrap(),
             &[serde_json::json!(64), serde_json::json!(768)]
         );
-        
+
         // Check metadata extraction
         let metadata_field = obj.get("__metadata__").unwrap();
         let metadata_content = metadata_field.get("metadata").unwrap().as_str().unwrap();
         assert!(metadata_content.contains("network_alpha"));
-        
+
         Ok(())
     }
 }

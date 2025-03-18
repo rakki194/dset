@@ -11,8 +11,9 @@ pub fn decode_json_strings(value: Value) -> Value {
             let trimmed = s.trim();
             if trimmed == "None" {
                 Value::Null
-            } else if (trimmed.starts_with('{') && trimmed.ends_with('}')) ||
-                      (trimmed.starts_with('[') && trimmed.ends_with(']')) {
+            } else if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+            {
                 match serde_json::from_str::<Value>(trimmed) {
                     Ok(parsed) => decode_json_strings(parsed),
                     Err(_) => Value::String(s),
@@ -20,16 +21,15 @@ pub fn decode_json_strings(value: Value) -> Value {
             } else {
                 Value::String(s)
             }
-        },
+        }
         Value::Object(map) => {
-            let new_map = map.into_iter()
-                .map(|(k,v)| (k, decode_json_strings(v)))
+            let new_map = map
+                .into_iter()
+                .map(|(k, v)| (k, decode_json_strings(v)))
                 .collect();
             Value::Object(new_map)
-        },
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(decode_json_strings).collect())
-        },
+        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(decode_json_strings).collect()),
         other => other,
     }
 }
@@ -50,7 +50,7 @@ pub fn extract_training_metadata(raw_metadata: &Value) -> Value {
                         new_map.insert("invalid_json".to_string(), Value::String(s.clone()));
                         Value::Object(new_map)
                     }
-                },
+                }
                 other => decode_json_strings(other.clone()),
             }
         } else {
@@ -118,4 +118,4 @@ mod tests {
         });
         assert_eq!(extracted, expected);
     }
-} 
+}
