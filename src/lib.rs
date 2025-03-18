@@ -7,18 +7,20 @@
 //! - Handling caption files
 //! - Processing and formatting JSON files
 //! - Converting between different file formats (JSON to caption)
-//! - Managing reasoning datasets for AI training
-//!
+//! - Concatenating files with different extensions
+//! 
 //! The library is organized into several modules:
 //! - `caption`: Handles caption file processing
 //! - `metadata`: Manages metadata extraction and processing
 //! - `st`: SafeTensors-related functionality
 //! - `reasoning`: Manages AI reasoning datasets for training
+//! - `concat`: Utilities for concatenating files with different extensions
 
 pub mod caption;
 pub mod metadata;
 pub mod reasoning;
 pub mod st;
+pub mod concat;
 
 use log::info;
 pub use xio;
